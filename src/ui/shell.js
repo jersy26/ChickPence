@@ -1,5 +1,6 @@
 import { syncEngine } from '../services/syncEngine.js';
 import { openSupabaseConfigModal } from './modals.js';
+import { checkAndSeedInitialData } from '../db/seed.js';
 
 export function renderShell(activeView, contentHtml, syncStatus, onNavigate, onLogout, onReload) {
   const isOff = !syncStatus.online;
@@ -89,7 +90,6 @@ export function attachShellListeners(container, onNavigate, onLogout, onReload) 
   if (resetDemoBtn) {
     resetDemoBtn.addEventListener('click', async () => {
       if (!confirm('Reset all demo data? This clears IndexedDB and reloads the seed batches.')) return;
-      const { checkAndSeedInitialData } = await import('../db/seed.js');
       await checkAndSeedInitialData(true);
       onReload();
     });

@@ -1,8 +1,10 @@
 import { db } from './dexie.js';
 import { recomputeAllAllocations } from '../services/allocationService.js';
+import { isBatchActiveOnDate, liveHeadCount } from '../services/allocationEngine.js';
 
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
 export const PLACEHOLDER_BUYER = 'Buyer (placeholder)';
+export const SEED_VERSION = 'v2.2_realistic_poultry_data';
 
 const addDays = (dateStr, n) => {
   const d = new Date(dateStr + 'T00:00:00Z');
@@ -113,44 +115,71 @@ function generateBatchData(o) {
     });
   }
 
-  return { batch, mortalityLogs, feedLogs, sales };
+  return { def: o, batch, mortalityLogs, feedLogs, sales };
 }
 
 /**
- * Generate farm-level expenses covering a date range.
- * Expenses are shared across whichever batches are active on each day.
+ * Generate farm-level expenses covering the active periods.
+ * Daily feed and other costs realistically scale with the total live head count on the farm
+ * on that date, taking into account the age of each active batch.
  */
-function generateExpenses(startDate, days, seed, dailyFeedBase, dailyOtherBase) {
+function generateFarmExpenses(allBatchData, startDate, today, seed = 999) {
   const r = rng(seed);
   const now = new Date().toISOString();
+  const totalDays =
+    Math.ceil((new Date(today + 'T00:00:00Z') - new Date(startDate + 'T00:00:00Z')) / 86400000) + 1;
   const expenses = [];
 
-  for (let i = 0; i < days; i++) {
+  for (let i = 0; i < totalDays; i++) {
     const d = addDays(startDate, i);
-    const feedCentavos = Math.round((dailyFeedBase * (0.9 + r() * 0.2)) * 100);
-    const otherCentavos = Math.round((dailyOtherBase * (0.7 + r() * 0.6)) * 100);
 
-    if (feedCentavos > 0 || otherCentavos > 0) {
-      expenses.push({
-        expense_id: crypto.randomUUID(),
-        entry_date: d,
-        feed_centavos: feedCentavos,
-        other_centavos: otherCentavos,
-        updated_at: now,
-        deleted_at: null
-      });
+    // Identify which flocks are active on date d
+    const activeFlocks = allBatchData.filter((b) =>
+      isBatchActiveOnDate(b.batch, b.mortalityLogs, b.sales, d)
+    );
+    if (!activeFlocks.length) continue;
+
+    let dayFeedCost = 0;
+    let dayOtherCost = 0;
+
+    for (const f of activeFlocks) {
+      const dayIndex = Math.max(
+        0,
+        Math.floor((new Date(d + 'T00:00:00Z') - new Date(f.batch.start_date + 'T00:00:00Z')) / 86400000)
+      );
+      const heads = liveHeadCount(f.batch, f.mortalityLogs, f.sales, d);
+
+      // Broiler feed consumption: ~15g on day 0 up to ~135g on day 42
+      // Feed price ~P28.5/kg. Average feed cost per bird per day is ~P2.10
+      const progress = Math.min(1, dayIndex / f.def.days);
+      const feedKgPerHead = 0.015 + progress * 0.12;
+      const feedCostThis = heads * feedKgPerHead * 28.5 * (0.95 + r() * 0.1);
+
+      // Consolidated other costs: electricity, water, labor, vaccines ~P0.32 per bird/day
+      const otherCostThis = heads * 0.32 * (0.9 + r() * 0.2);
+
+      dayFeedCost += feedCostThis;
+      dayOtherCost += otherCostThis;
     }
+
+    expenses.push({
+      expense_id: crypto.randomUUID(),
+      entry_date: d,
+      feed_centavos: Math.round(dayFeedCost * 100),
+      other_centavos: Math.round(dayOtherCost * 100),
+      updated_at: now,
+      deleted_at: null
+    });
   }
 
   return expenses;
 }
 
 export async function checkAndSeedInitialData(force = false) {
-  const count = await db.batches.count();
-  const openCount = await db.batches.filter((b) => b.status === 'Open' && !b.deleted_at).count();
+  const currentVersionRecord = await db.app_state.get('seed_version');
+  const hasValidSeed = currentVersionRecord && currentVersionRecord.value === SEED_VERSION;
 
-  // Skip only if we already have data AND at least 2 open batches (happy state)
-  if (count > 0 && openCount >= 2 && !force) {
+  if (hasValidSeed && !force) {
     return false;
   }
 
@@ -164,8 +193,8 @@ export async function checkAndSeedInitialData(force = false) {
   await db.outbox.clear();
 
   /**
-   * Batch definitions.
-   * OVERLAP WINDOW: Batch 2026-06 runs Jun 1 – Jul 15 (45 days).
+   * Batch definitions: 6 closed batches + 2 open batches.
+   * OVERLAP WINDOW: Batch 2026-06 runs Jun 1 – Jul 15 (45 days, Closed).
    *                 Batch 2026-07 starts Jul 1 (Open), so Jul 1–Jul 15 both are active.
    *                 This satisfies the overlap requirement.
    */
@@ -189,7 +218,7 @@ export async function checkAndSeedInitialData(force = false) {
     {
       name: 'Batch 2026-07',
       start: '2026-07-01', // Starts Jul 1 — overlaps with 2026-06 until Jul 15
-      days: 61,           // ~2 months running (still Open)
+      days: 61,           // ~2 months running (Open batch 1)
       chicks: 10000,
       seed: 77,
       mp: 0.062,
@@ -199,7 +228,7 @@ export async function checkAndSeedInitialData(force = false) {
     },
     {
       name: 'Batch 2026-09',
-      start: '2026-09-01',  // 2nd open batch — started September
+      start: '2026-09-01',  // Open batch 2 — started September
       days: 30,
       chicks: 8000,
       seed: 88,
@@ -217,16 +246,13 @@ export async function checkAndSeedInitialData(force = false) {
   const allStarts = batchDefs.map((d) => d.start);
   const farmStart = allStarts.reduce((min, s) => (s < min ? s : min), allStarts[0]);
   const today = new Date().toISOString().slice(0, 10);
-  const farmDays = Math.ceil(
-    (new Date(today + 'T00:00:00Z') - new Date(farmStart + 'T00:00:00Z')) / (1000 * 60 * 60 * 24)
-  ) + 1;
 
-  // Generate farm-level expenses covering the full period
-  const allExpenses = generateExpenses(farmStart, farmDays, 999, 45000, 8000);
+  // Generate farm-level expenses dynamically scaling with active flock live head counts
+  const allExpenses = generateFarmExpenses(allBatchData, farmStart, today, 999);
 
   await db.transaction(
     'rw',
-    [db.batches, db.feed_logs, db.mortality_logs, db.sales, db.expenses, db.allocations],
+    [db.batches, db.feed_logs, db.mortality_logs, db.sales, db.expenses, db.allocations, db.app_state],
     async () => {
       for (const { batch, mortalityLogs, feedLogs, sales } of allBatchData) {
         await db.batches.add(batch);
@@ -235,6 +261,7 @@ export async function checkAndSeedInitialData(force = false) {
         await db.sales.bulkAdd(sales);
       }
       await db.expenses.bulkAdd(allExpenses);
+      await db.app_state.put({ key: 'seed_version', value: SEED_VERSION });
     }
   );
 
