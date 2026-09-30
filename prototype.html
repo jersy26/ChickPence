@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ChickPence Prototype</title>
+<style>
+:root{--bg:#f4f3ef;--card:#fff;--ink:#1f1f1c;--mut:#77756e;--ln:#d6d3ca;--fill:#ebe9e2;--acc:#c98a00;--bad:#b3261e;--ok:#2e7d32;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171715;--card:#232321;--ink:#eeede8;--mut:#9a988f;--ln:#45443f;--fill:#302f2c;--acc:#e0a91f;--bad:#f2857e;--ok:#7bc47f}}
+:root[data-theme="dark"]{--bg:#171715;--card:#232321;--ink:#eeede8;--mut:#9a988f;--ln:#45443f;--fill:#302f2c;--acc:#e0a91f;--bad:#f2857e;--ok:#7bc47f}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+.app{display:flex;min-height:100vh}
+.side{width:210px;flex:none;background:var(--card);border-right:1px solid var(--ln);padding:16px 12px;display:flex;flex-direction:column;gap:4px}
+.logo{font-size:18px;font-weight:700;margin:0 6px 12px}
+.nav{background:none;border:0;text-align:left;padding:9px 10px;border-radius:8px}
+.nav:hover{background:var(--fill)}.nav.on{background:var(--ink);color:var(--card);font-weight:600}
+.sync{margin-top:auto;font-size:12px;color:var(--mut);border-top:1px dashed var(--ln);padding-top:10px;display:flex;flex-direction:column;gap:6px}
+.sync b{color:var(--acc)}.sync .ok{color:var(--ok);font-weight:600}
+.link{background:none;border:0;padding:0;color:var(--mut);text-decoration:underline;text-align:left;font-size:12px}
+.main{flex:1;min-width:0;padding:22px;display:flex;flex-direction:column;gap:14px}
+h1{font-size:22px;margin:0}h2{font-size:15px;margin:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.mut{color:var(--mut);font-size:12px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{align-items:center;text-align:center}.kpi b{font-size:20px}
+.btn{border:1px solid var(--ink);background:var(--fill);border-radius:8px;padding:8px 14px;font-weight:600}
+.btn.p{background:var(--ink);color:var(--card)}.btn.acc{background:var(--acc);border-color:var(--acc);color:#111}
+.btn:hover{opacity:.85}
+.badge{font-size:11px;border:1px solid var(--ink);border-radius:20px;padding:1px 9px;font-weight:500;white-space:nowrap}
+.flag{border:1px solid var(--bad);color:var(--bad);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600}
+.okline{border:1px solid var(--ln);border-radius:8px;padding:6px 10px;font-size:13px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--ln)}
+.tabs button{background:none;border:0;padding:7px 14px;border-radius:8px 8px 0 0;color:var(--mut)}
+.tabs button.on{color:var(--ink);font-weight:600;border:1px solid var(--ln);border-bottom:2px solid var(--card);margin-bottom:-1px;background:var(--card)}
+.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid var(--ln);padding:7px 6px;text-align:left;white-space:nowrap}
+th{color:var(--mut);font-weight:600;font-size:12px}
+tr.click{cursor:pointer}tr.click:hover{background:var(--fill)}
+.ed{background:none;border:0;padding:0 4px}
+label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mut)}
+input,select{font:inherit;color:var(--ink);background:var(--fill);border:1px solid var(--ln);border-radius:8px;padding:8px 10px;width:100%}
+input:focus{outline:2px solid var(--acc);outline-offset:-1px}
+.split{display:flex;gap:14px;align-items:flex-start}
+.left{flex:1;min-width:0;display:flex;flex-direction:column;gap:14px}
+.panel{width:290px;flex:none;background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:9px}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.panel .tabs button{padding:7px 9px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{border:1px solid var(--ln);background:none;border-radius:20px;padding:3px 12px;font-size:12px}.chip.on{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.dash2{display:grid;grid-template-columns:1fr 270px;gap:12px}
+.chartbox{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.bars{display:flex;flex-direction:column;gap:6px}.br{display:flex;align-items:center;gap:8px;font-size:12px}.br span{width:78px;flex:none}.br u{display:block;height:12px;background:var(--acc);border-radius:3px}.br i{font-style:normal;color:var(--mut)}
+svg text{fill:var(--mut);font-size:11px}svg .v{fill:var(--ink)}svg rect.b{cursor:pointer}
+.login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.login .card{width:100%;max-width:380px;padding:26px;gap:12px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9}
+.modal .card{width:100%;max-width:400px;gap:12px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--card);padding:9px 16px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:10}
+#toast.show{opacity:1}
+@media (max-width:1000px){.split{flex-direction:column}.panel{width:100%}.dash2{grid-template-columns:1fr}}
+@media (max-width:800px){.app{flex-direction:column}.side{width:auto;flex-direction:row;flex-wrap:wrap;align-items:center;border-right:0;border-bottom:1px solid var(--ln);padding:10px}.logo{margin:0 8px 0 0}.sync{margin:0 0 0 auto;border:0;padding:0;flex-direction:row;align-items:center}.main{padding:14px}.g4{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr}}
+</style></head><body>
+<div id="app"></div><div id="modal"></div><div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TODAY='2026-09-30';
+const fd=(d,y)=>new Date(d+'T00:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric',year:y?'numeric':undefined,timeZone:'UTC'});
+const P=n=>(n<0?'-':'')+'₱'+Math.abs(Math.round(n)).toLocaleString('en-US'),pc=n=>n.toFixed(1)+'%';
+const addD=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
+const rng=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+let uid=1;const id=()=>uid++;
+const BUY=['Aling Nena Dressing Plant','Santos Meat Shop','Metro Poultry Trading','Kuya Ben Manok'];
+function mk(o){const r=rng(o.seed),rf=rng(o.seed+999),b={id:id(),name:o.name,start:o.start,end:o.done?addD(o.start,o.days):null,chicks:o.chicks,chickCost:o.chicks*55,mt:o.mt??null,cb:o.cb??null,status:o.done?'Completed':'Active',costs:[],feed:[],mort:[],sales:[]};
+ for(let i=0;i<o.days;i++){const d=addD(o.start,i);
+  b.costs.push({id:id(),date:d,feed:Math.round(o.chicks*(1+i/o.days*2.4)*(.95+r()*.1)),med:Math.round(o.chicks*.12*r()*(i<10?1.5:.7)),util:Math.round(1100+r()*600),labor:1500,transport:r()<.15?Math.round(1500+r()*1500):0,other:r()<.2?Math.round(200+r()*500):0});
+  b.mort.push({id:id(),date:d,deaths:Math.round(o.chicks*o.mp/o.days*(.4+r()*1.2))});
+  b.feed.push({id:id(),date:d,type:i<14?'Starter':i<28?'Grower':'Finisher',kg:Math.round(o.chicks*(.015+i/o.days*.13)*(.95+rf()*.1))});}
+ const surv=o.chicks-b.mort.reduce((s,x)=>s+x.deaths,0);
+ const parts=o.done?[[.4,-2],[.35,-1],[.25,0]]:[[0,-2]];let left=surv;
+ parts.forEach(([f,off],i)=>{const qty=o.done?(i==2?left:Math.round(surv*f)):1200;left-=qty;const kg=+(qty*(1.9+r()*.3)).toFixed(2),ppk=+(o.price*(.97+r()*.06)).toFixed(2);
+  b.sales.push({id:id(),date:addD(o.start,o.days+off),buyer:BUY[(i+o.seed)%4],qty,kg,ppk,total:+(kg*ppk).toFixed(2)});});
+ return b}
+const S={view:'login',tab:'Costs',edit:null,pending:0,offline:false,sel:null,q:'',f:'All',batches:[
+ mk({name:'Batch 2025-08',start:'2025-08-05',days:44,chicks:10000,seed:11,mp:.035,price:98,done:1,mt:5,cb:1800000}),
+ mk({name:'Batch 2025-10',start:'2025-10-04',days:45,chicks:12000,seed:22,mp:.042,price:102,done:1,mt:5,cb:2100000}),
+ mk({name:'Batch 2025-12',start:'2025-12-03',days:46,chicks:10500,seed:33,mp:.081,price:94,done:1,mt:6,cb:1900000}),
+ mk({name:'Batch 2026-02',start:'2026-02-01',days:44,chicks:13000,seed:44,mp:.03,price:98,done:1,mt:5,cb:2300000}),
+ mk({name:'Batch 2026-04',start:'2026-04-02',days:45,chicks:15000,seed:55,mp:.09,price:84,done:1,mt:6,cb:2400000}),
+ mk({name:'Batch 2026-06',start:'2026-06-01',days:45,chicks:11000,seed:66,mp:.038,price:101,done:1,mt:5,cb:2000000}),
+ mk({name:'Batch 2026-08',start:'2026-08-20',days:41,chicks:10000,seed:77,mp:.062,price:98,done:0,mt:5,cb:1700000})]};
+const sum=(a,k)=>a.reduce((s,x)=>s+x[k],0),T=c=>c.feed+c.med+c.util+c.labor+c.transport+c.other;
+const cats=b=>({Chicks:b.chickCost,Feed:sum(b.costs,'feed'),Medicine:sum(b.costs,'med'),Utilities:sum(b.costs,'util'),Labor:sum(b.costs,'labor'),Transport:sum(b.costs,'transport'),Other:sum(b.costs,'other')});
+const cost=b=>Object.values(cats(b)).reduce((a,c)=>a+c,0),rev=b=>sum(b.sales,'total'),prof=b=>rev(b)-cost(b),marg=b=>rev(b)?prof(b)/rev(b)*100:0,fk=b=>sum(b.feed,'kg'),mc=b=>sum(b.mort,'deaths'),mp=b=>mc(b)/b.chicks*100;
+const act=()=>S.batches.find(b=>b.status==='Active'),dn=()=>S.batches.filter(b=>b.status==='Completed').sort((a,b)=>a.start<b.start?-1:1);
+
+/* ---------- helpers ---------- */
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('show'),2200)}
+function go(v,sel){S.view=v;if(sel!==undefined)S.sel=sel;S.edit=null;render();scrollTo(0,0)}
+function syncHTML(){return S.offline?`<b>● Offline${S.pending?` · ${S.pending} pending sync`:''}</b>`:S.pending?`<b>● ${S.pending} pending sync</b>`:'<span class="ok">● All synced</span>'}
+function updSync(){const e=$('#sync');if(e)e.innerHTML=syncHTML()+`<button class="link" onclick="toggleNet()">${S.offline?'Go online':'Simulate offline'}</button>`}
+function bump(){S.pending++;updSync();if(!S.offline)setTimeout(()=>{if(!S.offline){S.pending=0;updSync()}},1500)}
+function toggleNet(){S.offline=!S.offline;updSync();toast(S.offline?'Offline: entries will queue on this device':'Back online, syncing…');if(!S.offline)setTimeout(()=>{S.pending=0;updSync()},1000)}
+function shell(active,inner){const n=(k,l)=>`<button class="nav ${active===k?'on':''}" onclick="go('${k}')">${l}</button>`;
+ return `<div class="app"><aside class="side"><div class="logo">🐥 ChickPence</div>${n('dashboard','Dashboard')}${n('active','Active Batch')}${n('history','History')}<button class="nav" onclick="logout()">Logout</button><div class="sync" id="sync"></div></aside><main class="main">${inner}</main></div>`}
+function modal(h){$('#modal').innerHTML=`<div class="modal" onclick="if(event.target===this)closeM()"><div class="card">${h}</div></div>`}
+function closeM(){$('#modal').innerHTML=''}
+function logout(){S.view='login';S.edit=null;render()}
+
+/* ---------- views ---------- */
+function vLogin(){return `<div class="login"><div class="card"><h1 style="text-align:center">🐥 ChickPence</h1><label>Username<input id="u" placeholder="Enter username" onkeydown="if(event.key==='Enter')go('dashboard')"></label><label>Password<input id="p" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')go('dashboard')"></label><button class="btn p" onclick="go('dashboard')">Log in</button><div class="mut" style="text-align:center">Prototype: any input opens the demo account.</div></div></div>`}
+function chart(list){if(!list.length)return '<div class="mut">No completed batches yet.</div>';
+ const v=list.map(prof),mx=Math.max(0,...v),mn=Math.min(0,...v),top=26,bot=188,sc=(bot-top)/((mx-mn)||1),z=top+mx*sc,w=520/list.length;
+ let s=`<svg viewBox="0 0 520 226" width="100%" style="max-width:520px"><line x1="0" x2="520" y1="${z}" y2="${z}" stroke="var(--ink)" stroke-width="1.5"/>`;
+ list.forEach((b,i)=>{const p=v[i],h=Math.max(Math.abs(p)*sc,2),x=i*w+w*.18,bw=w*.64,y=p>=0?z-h:z;
+  s+=`<rect class="b" x="${x}" y="${y}" width="${bw}" height="${h}" rx="3" fill="${p>=0?'var(--acc)':'var(--bad)'}" onclick="go('summary',${b.id})"><title>${esc(b.name)}: ${P(p)}</title></rect><text class="v" x="${x+bw/2}" y="${p>=0?y-5:y+h+12}" text-anchor="middle">${p<0?'-':''}${Math.abs(Math.round(p/1000))}k</text><text x="${x+bw/2}" y="216" text-anchor="middle">${esc(b.name.replace('Batch ',''))}</text>`});
+ return s+'</svg>'}
+function warn(b){if(!b)return '<div class="mut">No active batch.</div><button class="btn" onclick="go(\'active\')">Start a batch</button>';
+ const L=[];let flagged=0;
+ if(b.mt==null)L.push('<div class="okline">Mortality: no threshold set</div>');else{const f=mp(b)>b.mt;flagged+=f;L.push(`<div class="${f?'flag':'okline'}">${f?'⚠ ':''}Mortality ${pc(mp(b))} / limit ${b.mt}%</div>`)}
+ if(b.cb==null)L.push('<div class="okline">Cost: no budget set</div>');else{const f=cost(b)>b.cb;flagged+=f;L.push(`<div class="${f?'flag':'okline'}">${f?'⚠ ':''}Cost ${P(cost(b))} / budget ${P(b.cb)}</div>`)}
+ return L.join('')+(flagged?'':'<div class="mut">✓ No warnings</div>')+`<button class="link" onclick="thrModal()">✎ Edit thresholds</button>`}
+function vDash(){const b=act(),d=dn(),l5=d.slice(-5),avgP=l5.length?sum(l5.map(x=>({v:prof(x)})),'v')/l5.length:0,kg=sum(l5,'chicks')&&l5.reduce((s,x)=>s+sum(x.sales,'kg'),0),avgPr=kg?l5.reduce((s,x)=>s+rev(x),0)/kg:0;
+ return shell('dashboard',`<div class="top"><h1>Dashboard</h1>${b?`<button class="btn p" onclick="go('active')">Open Active Batch</button>`:`<button class="btn p" onclick="go('active')">+ New Batch</button>`}</div>
+ <div class="mut">Current Active Batch</div>
+ <div class="card">${b?`<div class="row"><b>${esc(b.name)}</b><span class="mut">Started ${fd(b.start)} · ${b.chicks.toLocaleString()} chicks</span></div><div class="g3"><div class="card kpi"><span class="mut">Cost to Date</span><b>${P(cost(b))}</b></div><div class="card kpi"><span class="mut">Sale to Date</span><b>${P(rev(b))}</b></div><div class="card kpi"><span class="mut">Mortality</span><b>${pc(mp(b))}</b></div></div>`:'<div class="mut">No active batch right now. Start one from Active Batch.</div>'}</div>
+ <div class="dash2"><div class="card"><h2>Last 5 Batches Net Profit</h2><div class="chartbox">${chart(l5)}<div style="flex:1;min-width:190px;display:flex;flex-direction:column;gap:10px"><div class="card kpi"><span class="mut">Average Net Profit</span><b>${P(avgP)}</b></div><div class="card kpi"><span class="mut">Average Selling Price Per KG</span><b>${P(avgPr)}</b></div></div></div><span class="mut">Tap a bar to open that batch. Completed batches only.</span></div>
+ <div class="card"><h2>Warning</h2>${warn(b)}</div></div>`)}
+
+function tbl(b){const e=(l,i)=>`<button class="ed" title="Edit" onclick="setEdit('${l}',${i})">✎</button>`,em=c=>`<tr><td colspan="${c}" class="mut">No entries yet.</td></tr>`;
+ if(S.tab==='Costs'){const r=[...b.costs].sort((a,c)=>a.date<c.date?1:-1);return `<table><tr><th>Date</th><th>Feed</th><th>Med.</th><th>Util.</th><th>Labor</th><th>Transp.</th><th>Other</th><th>Total</th><th></th></tr>${r.map(c=>`<tr><td>${fd(c.date)}</td><td>${P(c.feed)}</td><td>${P(c.med)}</td><td>${P(c.util)}</td><td>${P(c.labor)}</td><td>${P(c.transport)}</td><td>${P(c.other)}</td><td><b>${P(T(c))}</b></td><td>${e('costs',c.id)}</td></tr>`).join('')||em(9)}</table>`}
+ if(S.tab==='Feed'){const r=[...b.feed].sort((a,c)=>a.date<c.date?1:-1);return `<table><tr><th>Date</th><th>Feed type</th><th>Quantity (kg)</th><th></th></tr>${r.map(f=>`<tr><td>${fd(f.date)}</td><td>${esc(f.type)}</td><td>${f.kg.toLocaleString()}</td><td>${e('feed',f.id)}</td></tr>`).join('')||em(4)}</table>`}
+ if(S.tab==='Mortality'){let cum=0;const r=[...b.mort].sort((a,c)=>a.date<c.date?-1:1).map(m=>({...m,cum:cum+=m.deaths})).reverse();return `<table><tr><th>Date</th><th>Deaths</th><th>Cumulative</th><th>Rate</th><th></th></tr>${r.map(m=>`<tr><td>${fd(m.date)}</td><td>${m.deaths}</td><td>${m.cum}</td><td>${pc(m.cum/b.chicks*100)}</td><td>${e('mort',m.id)}</td></tr>`).join('')||em(5)}</table>`}
+ const r=[...b.sales].sort((a,c)=>a.date<c.date?1:-1);return `<table><tr><th>Date</th><th>Buyer</th><th>Qty</th><th>kg</th><th>₱/kg</th><th>Total</th><th></th></tr>${r.map(s=>`<tr><td>${fd(s.date)}</td><td>${esc(s.buyer)}</td><td>${s.qty}</td><td>${s.kg}</td><td>${s.ppk}</td><td><b>${P(s.total)}</b></td><td>${e('sales',s.id)}</td></tr>`).join('')||em(7)}</table>`}
+function panel(b){const L={Costs:'costs',Feed:'feed',Mortality:'mort',Sales:'sales'}[S.tab],ed=S.edit&&S.edit.list===L?b[L].find(x=>x.id===S.edit.id):null,v=(k,d='')=>ed?ed[k]:d;
+ const N=(i,l,k)=>`<label>${l}<input id="${i}" type="number" min="0" step="any" placeholder="0.00" value="${v(k)}"></label>`,D=(i,k)=>`<label>${S.tab==='Sales'?'Sale date':'Date'}<input id="${i}" type="date" value="${v(k,TODAY)}"></label>`;
+ let f='',fn='';
+ if(S.tab==='Costs'){f=D('d','date')+N('c_feed','Feed','feed')+N('c_med','Medicine / Vitamin','med')+N('c_util','Utilities','util')+N('c_labor','Labor','labor')+N('c_transport','Transportation','transport')+N('c_other','Others','other');fn='saveCost()'}
+ else if(S.tab==='Feed'){f=D('d','date')+`<label>Feed type<select id="f_type">${['Starter','Grower','Finisher'].map(t=>`<option${v('type')===t?' selected':''}>${t}</option>`).join('')}</select></label>`+N('f_kg','Quantity (kg)','kg');fn='saveFeed()'}
+ else if(S.tab==='Mortality'){f=D('d','date')+`<label>Number of deaths<input id="m_deaths" type="number" min="0" step="1" placeholder="0" value="${v('deaths')}"></label>`;fn='saveMort()'}
+ else{f=D('d','date')+`<label>Buyer name<input id="s_buyer" placeholder="Enter name" value="${esc(v('buyer'))}"></label>`+N('s_qty','Quantity sold (heads)','qty')+`<label>Total weight (kg)<input id="s_kg" type="number" min="0" step="any" placeholder="0.00" value="${v('kg')}" oninput="calcT()"></label><label>Price per kg (₱)<input id="s_ppk" type="number" min="0" step="any" placeholder="0.00" value="${v('ppk')}" oninput="calcT()"></label><div class="row okline"><span>Total amount</span><b id="s_tot">${P(ed?ed.total:0)}</b></div>`;fn='saveSale()'}
+ const tb=[['Costs','Cost'],['Feed','Feed'],['Mortality','Mortality'],['Sales','Sale']].map(([k,l])=>`<button class="${S.tab===k?'on':''}" onclick="setTab('${k}')">${l}</button>`).join('');
+ return `<div class="panel"><div class="tabs" style="margin:-4px -4px 0">${tb}</div>${ed?'<div class="row okline"><span>Editing entry</span><button class="link" onclick="cancelEdit()">Cancel</button></div>':''}${f}<button class="btn p" onclick="${fn}">${ed?'Save changes':'Save'}</button></div>`}
+function vActive(){const b=act();
+ if(!b)return shell('active',`<h1>Active Batch</h1><div class="mut">No active batch. Only one batch can be active at a time.</div><div class="card" style="max-width:480px"><h2>New Batch</h2><label>Batch name / ID<input id="n_name" value="Batch 2026-10"></label><label>Start date<input id="n_start" type="date" value="${TODAY}"></label><label>Initial chick count<input id="n_chicks" type="number" min="1" value="10000"></label><label>Chick acquisition cost (₱)<input id="n_cc" type="number" min="0" value="550000"></label><label>Mortality threshold (%) · optional<input id="n_mt" type="number" min="0" step="any" value="5"></label><label>Cost budget (₱) · optional<input id="n_cb" type="number" min="0" value="1700000"></label><button class="btn p" onclick="newBatch()">Create Batch</button></div>`);
+ const tb=['Costs','Feed','Mortality','Sales'].map(k=>`<button class="${S.tab===k?'on':''}" onclick="setTab('${k}')">${k}</button>`).join('');
+ return shell('active',`<div class="top"><div class="row" style="gap:10px"><button class="ed" style="font-size:20px" onclick="go('dashboard')" title="Back">←</button><h1>${esc(b.name)}</h1><span class="badge">Active</span></div><button class="btn" onclick="thrModal()">✎ Edit threshold</button></div>
+ <div class="split"><div class="left">${(b.mt!=null&&mp(b)>b.mt)?`<div class="flag">⚠ Mortality ${pc(mp(b))} is above the ${b.mt}% threshold</div>`:''}${(b.cb!=null&&cost(b)>b.cb)?`<div class="flag">⚠ Cost ${P(cost(b))} is above the ${P(b.cb)} budget</div>`:''}
+ <div class="g3"><div class="card kpi"><span class="mut">Running Costs</span><b>${P(cost(b))}</b></div><div class="card kpi"><span class="mut">Sales</span><b>${P(rev(b))}</b></div><div class="card kpi"><span class="mut">Mortality</span><b>${mc(b)} / ${b.chicks.toLocaleString()}</b></div></div>
+ <div class="tabs">${tb}</div><div class="card wrap">${tbl(b)}</div><div><button class="btn p" onclick="completeM()">Complete Batch</button></div></div>${panel(b)}</div>`)}
+function histRows(){const q=S.q.toLowerCase();const r=[...S.batches].sort((a,b)=>a.start<b.start?1:-1).filter(b=>(S.f==='All'||b.status===S.f)&&b.name.toLowerCase().includes(q));
+ return r.map(b=>{const c=b.status==='Completed';return `<tr class="click" onclick="go('${c?'summary':'active'}',${b.id})"><td><b>${esc(b.name)}</b></td><td>${fd(b.start,1)}</td><td>${b.end?fd(b.end,1):'—'}</td><td>${b.chicks.toLocaleString()}</td><td><span class="badge">${b.status}</span></td><td>${c?P(prof(b)):'—'}</td><td>${c?pc(marg(b)):'—'}</td><td>${pc(mp(b))}</td></tr>`}).join('')||'<tr><td colspan="8" class="mut">No batches match.</td></tr>'}
+function vHist(){const c=['All','Active','Completed'].map(k=>`<button class="chip ${S.f===k?'on':''}" onclick="S.f='${k}';render()">${k}</button>`).join('');
+ return shell('history',`<h1>History</h1><div class="row" style="flex-wrap:wrap"><input placeholder="🔍 Search batch name" value="${esc(S.q)}" oninput="S.q=this.value;$('#hrows').innerHTML=histRows()" style="max-width:280px"><div class="chips">${c}</div></div><div class="card wrap"><table><tr><th>Batch</th><th>Start</th><th>End</th><th>Chicks</th><th>Status</th><th>Net profit</th><th>Margin</th><th>Mortality</th></tr><tbody id="hrows">${histRows()}</tbody></table></div><div class="mut">Click a batch to open it.</div>`)}
+function vSum(){const b=S.batches.find(x=>x.id===S.sel);if(!b)return vHist();const c=cats(b),mx=Math.max(...Object.values(c)),top=Object.entries(c).sort((a,d)=>d[1]-a[1])[0],p=prof(b);
+ return shell('history',`<div class="top"><div class="row" style="gap:10px"><button class="ed" style="font-size:20px" onclick="go('history')" title="Back to History">←</button><h1>${esc(b.name)}</h1><span class="badge">${b.status}</span></div><span class="mut">${fd(b.start,1)} – ${b.end?fd(b.end,1):''} · read-only</span></div>
+ <div class="g4"><div class="card kpi"><span class="mut">Total cost</span><b>${P(cost(b))}</b></div><div class="card kpi"><span class="mut">Revenue</span><b>${P(rev(b))}</b></div><div class="card kpi"><span class="mut">Net profit</span><b style="color:${p<0?'var(--bad)':'inherit'}">${P(p)}</b></div><div class="card kpi"><span class="mut">Profit margin</span><b>${pc(marg(b))}</b></div></div>
+ <div class="dash2" style="grid-template-columns:1fr 1fr"><div class="card"><h2>Cost breakdown</h2><span class="mut">Highest: ${top[0]} (${P(top[1])}) · Feed consumed: ${fk(b).toLocaleString()} kg</span><div class="bars">${Object.entries(c).map(([k,v])=>`<div class="br"><span>${k}</span><u style="width:${v/mx*55}%"></u><i>${P(v)}</i></div>`).join('')}</div></div>
+ <div class="card"><h2>Sales</h2><div class="wrap"><table><tr><th>Date</th><th>Buyer</th><th>Qty</th><th>kg</th><th>Total</th></tr>${b.sales.map(s=>`<tr><td>${fd(s.date)}</td><td>${esc(s.buyer)}</td><td>${s.qty}</td><td>${s.kg}</td><td>${P(s.total)}</td></tr>`).join('')}</table></div><span class="mut">Mortality: ${mc(b)} of ${b.chicks.toLocaleString()} (${pc(mp(b))})${b.mt!=null?` · threshold ${b.mt}%`:''}</span></div></div>`)}
+
+/* ---------- actions ---------- */
+function setTab(t){S.tab=t;S.edit=null;render()}
+function setEdit(l,i){S.edit={list:l,id:i};render()}
+function cancelEdit(){S.edit=null;render()}
+function calcT(){const t=(+$('#s_kg').value||0)*(+$('#s_ppk').value||0);$('#s_tot').textContent=P(t)}
+function upsert(list,o){const b=act();if(S.edit&&S.edit.list===list){Object.assign(b[list].find(x=>x.id===S.edit.id),o);toast('Entry updated · pending sync')}else{b[list].push({id:id(),...o});toast('Saved · pending sync')}S.edit=null;bump();render()}
+function saveCost(){const d=$('#d').value,v=k=>Math.max(0,+$('#c_'+k).value||0);if(!d)return toast('Pick a date');upsert('costs',{date:d,feed:v('feed'),med:v('med'),util:v('util'),labor:v('labor'),transport:v('transport'),other:v('other')})}
+function saveFeed(){const d=$('#d').value,t=$('#f_type').value,kg=+$('#f_kg').value;if(!d||!t||!(kg>0))return toast('Pick a date, feed type and quantity');upsert('feed',{date:d,type:t,kg:+kg.toFixed(2)})}
+function saveMort(){const d=$('#d').value,n=Math.round(+$('#m_deaths').value);if(!d||!(n>=0))return toast('Enter a date and number of deaths');upsert('mort',{date:d,deaths:n})}
+function saveSale(){const d=$('#d').value,by=$('#s_buyer').value.trim(),q=Math.round(+$('#s_qty').value),kg=+$('#s_kg').value,pp=+$('#s_ppk').value;if(!d||!by||!(q>0)||!(kg>0)||!(pp>0))return toast('Fill in buyer, quantity, weight and price');upsert('sales',{date:d,buyer:by,qty:q,kg:+kg.toFixed(2),ppk:+pp.toFixed(2),total:+(kg*pp).toFixed(2)})}
+function newBatch(){const n=$('#n_name').value.trim(),c=Math.round(+$('#n_chicks').value),s=$('#n_start').value;if(!n||!(c>0)||!s)return toast('Enter a name, start date and chick count');if(act())return toast('A batch is already active');
+ const g=x=>$(x).value===''?null:+$(x).value;S.batches.push({id:id(),name:n,start:s,end:null,chicks:c,chickCost:+$('#n_cc').value||0,mt:g('#n_mt'),cb:g('#n_cb'),status:'Active',costs:[],feed:[],mort:[],sales:[]});S.tab='Costs';bump();toast('Batch created');render()}
+function thrModal(){const b=act();if(!b)return;modal(`<h2>Edit thresholds</h2><label>Mortality threshold (%)<input id="t_mt" type="number" min="0" step="any" value="${b.mt??''}" placeholder="not set"></label><label>Cost budget (₱)<input id="t_cb" type="number" min="0" value="${b.cb??''}" placeholder="not set"></label><div class="row"><button class="btn" onclick="closeM()">Cancel</button><button class="btn p" onclick="saveThr()">Save</button></div>`)}
+function saveThr(){const b=act(),g=x=>$(x).value===''?null:+$(x).value;b.mt=g('#t_mt');b.cb=g('#t_cb');closeM();bump();toast('Thresholds updated');render()}
+function completeM(){const b=act();modal(`<h2>Mark this batch as completed?</h2><div class="mut">${b.sales.length?'Batch becomes read-only and profitability is computed.':'No sales recorded. Close anyway?'}</div><div class="row"><button class="btn" onclick="closeM()">Cancel</button><button class="btn p" onclick="doComplete()">Confirm</button></div>`)}
+function doComplete(){const b=act();b.status='Completed';b.end=TODAY;closeM();bump();toast('Batch completed');go('summary',b.id)}
+function render(){$('#app').innerHTML=({login:vLogin,dashboard:vDash,active:vActive,history:vHist,summary:vSum}[S.view])();updSync()}
+render();
+</script></body></html>
