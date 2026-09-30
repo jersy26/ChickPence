@@ -307,8 +307,6 @@ function renderOpenBatchCard(batchFullData, selectedBatchId, activeTab, editingI
         <div style="flex:1;">
           <div class="flex-row" style="gap: 8px;">
             <b style="font-size: 16px;">${batch.batch_name}</b>
-            <span class="badge-pill" style="background: var(--acc-light, #e3f0ff); color: var(--acc);">Open</span>
-            ${warn.mortalityFlag ? `<span class="badge-pill" style="background:var(--bad-light,#fff0f0);color:var(--bad);">⚠ Mortality</span>` : ''}
           </div>
           <div class="text-mut" style="font-size: 12px; margin-top: 2px;">
             Started ${formatDate(batch.start_date, true)} · ${batch.initial_chick_count.toLocaleString()} chicks initial · <b>${liveHeads.toLocaleString()}</b> live today

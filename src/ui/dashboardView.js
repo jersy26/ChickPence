@@ -82,8 +82,6 @@ export function renderDashboard(openBatchesData, closedBatchesWithData) {
             <div class="flex-row">
               <div>
                 <b style="font-size: 15px;">${batch.batch_name}</b>
-                <span class="badge-pill" style="margin-left: 8px; background:var(--acc-light,#e3f0ff);color:var(--acc);">Open</span>
-                ${warn.mortalityFlag ? `<span class="badge-pill" style="margin-left:4px;background:var(--bad-light,#fff0f0);color:var(--bad);">⚠ Mortality</span>` : ''}
               </div>
               <span class="text-mut">Started ${formatDate(batch.start_date, true)} · <b>${liveHeads.toLocaleString()}</b> live</span>
             </div>
