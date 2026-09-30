@@ -377,7 +377,7 @@ export function renderBatches(openBatchesData, expenses, selectedBatchId, active
 
   return `
     <div class="top-bar">
-      <h1>Batches</h1>
+      <h1>Open Batches</h1>
       <button class="btn-action primary" id="btn-show-new-batch-form">+ New Batch</button>
     </div>
 
