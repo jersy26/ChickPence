@@ -28,25 +28,20 @@ export function closeModal() {
   }
 }
 
+/** Edit mortality threshold only (cost_budget removed). */
 export function openThresholdModal(batch, onSave) {
   const mtVal = batch.mortality_threshold_pct != null ? batch.mortality_threshold_pct : '';
-  const cbVal = batch.cost_budget != null ? batch.cost_budget : '';
 
   openModal(`
     <div class="flex-row">
       <h2>Edit Batch Thresholds</h2>
       <button class="btn-icon" id="btn-close-modal">✕</button>
     </div>
-    <div class="text-mut">Set warning limits for ${batch.batch_name}. If actuals exceed these values, warning alerts will appear.</div>
-    
+    <div class="text-mut">Set a mortality warning limit for <b>${batch.batch_name}</b>. An alert will appear when the actual rate exceeds this value.</div>
+
     <label class="form-field">
       Mortality Threshold (%) · optional
       <input id="input-mt" type="number" min="0" max="100" step="0.1" value="${mtVal}" placeholder="e.g. 5.0" />
-    </label>
-
-    <label class="form-field">
-      Cost Budget (₱) · optional
-      <input id="input-cb" type="number" min="0" step="any" value="${cbVal}" placeholder="e.g. 1700000" />
     </label>
 
     <div class="flex-row" style="margin-top: 10px;">
@@ -59,42 +54,40 @@ export function openThresholdModal(batch, onSave) {
   document.getElementById('btn-cancel-threshold')?.addEventListener('click', closeModal);
   document.getElementById('btn-save-threshold')?.addEventListener('click', () => {
     const mt = document.getElementById('input-mt').value.trim();
-    const cb = document.getElementById('input-cb').value.trim();
-
     onSave({
-      mortality_threshold_pct: mt === '' ? null : Number(mt),
-      cost_budget: cb === '' ? null : Number(cb)
+      mortality_threshold_pct: mt === '' ? null : Number(mt)
     });
     closeModal();
   });
 }
 
-export function openCompleteBatchModal(batch, salesCount, onConfirm) {
+/** Confirm closing a batch (renamed from "Complete"). */
+export function openCloseBatchModal(batch, salesCount, onConfirm) {
   const hasSales = salesCount > 0;
 
   openModal(`
     <div class="flex-row">
-      <h2>Complete Batch?</h2>
+      <h2>Mark Batch as Closed?</h2>
       <button class="btn-icon" id="btn-close-modal">✕</button>
     </div>
 
     ${
       hasSales
-        ? `<p class="text-mut">Completing <b>${batch.batch_name}</b> sets its end date, locks all child records into read-only mode, and opens the final Batch Summary report.</p>`
+        ? `<p class="text-mut">Closing <b>${batch.batch_name}</b> sets its end date and locks records into read-only mode. The final Batch Summary report will open.</p>`
         : `<div class="flag-alert">
-             <span>⚠ <b>No sales recorded</b> for this batch. Completing now means revenue and profit will be recorded as ₱0. Are you sure you want to complete?</span>
+             <span>⚠ <b>No sales recorded</b> for this batch. Closing now means revenue and profit will be ₱0. Are you sure?</span>
            </div>`
     }
 
     <div class="flex-row" style="margin-top: 12px;">
-      <button class="btn-action" id="btn-cancel-complete">Cancel</button>
-      <button class="btn-action primary" id="btn-confirm-complete">Confirm Completion</button>
+      <button class="btn-action" id="btn-cancel-close">Cancel</button>
+      <button class="btn-action primary" id="btn-confirm-close">Confirm — Mark as Closed</button>
     </div>
   `);
 
   document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
-  document.getElementById('btn-cancel-complete')?.addEventListener('click', closeModal);
-  document.getElementById('btn-confirm-complete')?.addEventListener('click', () => {
+  document.getElementById('btn-cancel-close')?.addEventListener('click', closeModal);
+  document.getElementById('btn-confirm-close')?.addEventListener('click', () => {
     onConfirm();
     closeModal();
   });

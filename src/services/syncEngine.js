@@ -1,5 +1,6 @@
 import { db } from '../db/dexie.js';
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js';
+import { recomputeAllAllocations } from './allocationService.js';
 
 class SyncEngine {
   constructor() {
@@ -71,17 +72,19 @@ class SyncEngine {
       await table.put(updatedRecord);
     }
 
-    // 2. Queue in outbox
-    const primaryKeyField = this.getPrimaryKeyField(tableName);
-    const recordId = updatedRecord[primaryKeyField];
+    // 2. Queue in outbox (allocations are NOT synced)
+    if (tableName !== 'allocations') {
+      const primaryKeyField = this.getPrimaryKeyField(tableName);
+      const recordId = updatedRecord[primaryKeyField];
 
-    await db.outbox.add({
-      table_name: tableName,
-      record_id: recordId,
-      action: 'UPSERT',
-      payload: updatedRecord,
-      updated_at: now
-    });
+      await db.outbox.add({
+        table_name: tableName,
+        record_id: recordId,
+        action: 'UPSERT',
+        payload: updatedRecord,
+        updated_at: now
+      });
+    }
 
     this.notifyStatus();
 
@@ -106,13 +109,15 @@ class SyncEngine {
         existing.updated_at = now;
         await table.put(existing);
 
-        await db.outbox.add({
-          table_name: tableName,
-          record_id: recordId,
-          action: 'SOFT_DELETE',
-          payload: existing,
-          updated_at: now
-        });
+        if (tableName !== 'allocations') {
+          await db.outbox.add({
+            table_name: tableName,
+            record_id: recordId,
+            action: 'SOFT_DELETE',
+            payload: existing,
+            updated_at: now
+          });
+        }
       }
     }
 
@@ -129,6 +134,8 @@ class SyncEngine {
         return 'batch_id';
       case 'daily_costs':
         return 'cost_id';
+      case 'expenses':
+        return 'expense_id';
       case 'feed_logs':
         return 'feed_log_id';
       case 'mortality_logs':
@@ -144,8 +151,8 @@ class SyncEngine {
     switch (dexieTable) {
       case 'batches':
         return 'batch';
-      case 'daily_costs':
-        return 'daily_cost';
+      case 'expenses':
+        return 'expense';
       case 'feed_logs':
         return 'feed_log';
       case 'mortality_logs':
@@ -165,8 +172,7 @@ class SyncEngine {
     try {
       const supabase = getSupabase();
 
-      // If Supabase is NOT configured, we are in Demo/Local mode:
-      // We simulate successful sync by clearing the local outbox queue after a brief moment.
+      // Demo/Local mode: simulate sync by clearing outbox
       if (!supabase) {
         const outboxItems = await db.outbox.toArray();
         if (outboxItems.length > 0) {
@@ -176,14 +182,14 @@ class SyncEngine {
         return { success: true, count: outboxItems.length };
       }
 
-      // If Supabase IS configured:
+      // Supabase mode
       const outboxItems = await db.outbox.orderBy('id').toArray();
       if (!outboxItems.length) {
         await this.pullFromSupabase();
         return { success: true, count: 0 };
       }
 
-      // Separate into batches (parents first) and child entities
+      // Parents (batches) first, then children
       const batchEntries = outboxItems.filter((i) => i.table_name === 'batches');
       const childEntries = outboxItems.filter((i) => i.table_name !== 'batches');
 
@@ -198,14 +204,7 @@ class SyncEngine {
 
         if (error) {
           console.error(`Sync error on ${sbTable}:`, error);
-          if (error.code === '23505' && error.message?.includes('one_active_batch')) {
-            window.dispatchEvent(
-              new CustomEvent('chickpence-toast', {
-                detail: 'Sync error: Another batch is already Active in the cloud database.'
-              })
-            );
-          }
-          break; // Stop processing further dependent items
+          break;
         } else {
           successfullySyncedIds.push(item.id);
         }
@@ -215,8 +214,13 @@ class SyncEngine {
         await db.outbox.bulkDelete(successfullySyncedIds);
       }
 
-      // After pushing local changes, pull latest remote records
-      await this.pullFromSupabase();
+      // Pull latest remote records
+      const changed = await this.pullFromSupabase();
+
+      // Recompute allocations if any source record changed
+      if (changed) {
+        await recomputeAllAllocations();
+      }
 
       return { success: true, count: successfullySyncedIds.length };
     } catch (err) {
@@ -228,12 +232,17 @@ class SyncEngine {
     }
   }
 
+  /**
+   * Pull from Supabase. Returns true if any record was updated.
+   */
   async pullFromSupabase() {
     const supabase = getSupabase();
-    if (!supabase) return;
+    if (!supabase) return false;
+
+    let anyChanged = false;
 
     try {
-      const tables = ['batch', 'daily_cost', 'feed_log', 'mortality_log', 'sale'];
+      const tables = ['batch', 'expense', 'feed_log', 'mortality_log', 'sale'];
       for (const t of tables) {
         const { data, error } = await supabase.from(t).select('*');
         if (error) {
@@ -244,20 +253,21 @@ class SyncEngine {
           const dexieTable =
             t === 'batch'
               ? 'batches'
-              : t === 'daily_cost'
-              ? 'daily_costs'
+              : t === 'expense'
+              ? 'expenses'
               : t === 'feed_log'
               ? 'feed_logs'
               : t === 'mortality_log'
               ? 'mortality_logs'
               : 'sales';
 
-          // Apply last-write-wins based on updated_at
           await db.transaction('rw', db[dexieTable], async () => {
             for (const row of data) {
-              const local = await db[dexieTable].get(row[this.getPrimaryKeyField(dexieTable)]);
+              const pk = this.getPrimaryKeyField(dexieTable);
+              const local = await db[dexieTable].get(row[pk]);
               if (!local || new Date(row.updated_at) >= new Date(local.updated_at)) {
                 await db[dexieTable].put(row);
+                anyChanged = true;
               }
             }
           });
@@ -266,6 +276,8 @@ class SyncEngine {
     } catch (err) {
       console.error('Pull from Supabase failed:', err);
     }
+
+    return anyChanged;
   }
 }
 

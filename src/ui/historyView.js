@@ -1,9 +1,7 @@
 import {
-  calcTotalProductionCost,
-  calcTotalRevenue,
-  calcNetProfit,
-  calcProfitMargin,
-  calcMortalityMetrics,
+  calcBatchMetrics
+} from '../services/allocationEngine.js';
+import {
   formatPeso,
   formatPercent,
   formatDate
@@ -14,55 +12,57 @@ export function renderHistory(batchesWithFullData, searchQuery = '', statusFilte
 
   const filteredBatches = batchesWithFullData.filter((item) => {
     const matchesQuery = item.batch.batch_name.toLowerCase().includes(query);
-    const matchesStatus = statusFilter === 'All' || item.batch.status === statusFilter;
+    const matchesStatus =
+      statusFilter === 'All' ||
+      (statusFilter === 'Open' && item.batch.status === 'Open') ||
+      (statusFilter === 'Closed' && item.batch.status === 'Closed');
     return matchesQuery && matchesStatus;
   });
 
-  const chips = ['All', 'Active', 'Completed']
+  const chips = ['All', 'Open', 'Closed']
     .map(
       (s) => `
       <button class="chip-filter ${statusFilter === s ? 'active' : ''}" data-filter-status="${s}">
         ${s}
-      </button>
-    `
+      </button>`
     )
     .join('');
 
   const rowsHtml = filteredBatches.length
-    ? filteredBatches
-        .map((item) => {
-          const { batch, costs, sales, mortality } = item;
-          const isCompleted = batch.status === 'Completed';
+    ? filteredBatches.map((item) => {
+        const { batch, allocations, sales, mortality, feed } = item;
+        const isClosed = batch.status === 'Closed';
 
-          const totalCost = calcTotalProductionCost(batch, costs);
-          const totalRev = calcTotalRevenue(sales);
-          const profit = calcNetProfit(totalRev, totalCost);
-          const margin = calcProfitMargin(profit, totalRev);
-          const { mortalityRate } = calcMortalityMetrics(batch, mortality);
+        const metrics = calcBatchMetrics(batch, allocations, sales, mortality, feed);
+        const profit = metrics.netProfit;
+        const margin = metrics.margin;
+        const mortalityRate = metrics.mortalityRate;
 
-          return `
-            <tr class="clickable-row" data-history-row data-batch-id="${batch.batch_id}" data-status="${batch.status}">
-              <td><b>${batch.batch_name}</b></td>
-              <td>${formatDate(batch.start_date, true)}</td>
-              <td>${batch.end_date ? formatDate(batch.end_date, true) : '—'}</td>
-              <td>${batch.initial_chick_count.toLocaleString()}</td>
-              <td>${batch.status}</td>
-              <td style="color: ${isCompleted ? (profit < 0 ? 'var(--bad)' : 'var(--ink)') : 'var(--mut)'}">
-                ${isCompleted ? formatPeso(profit) : '—'}
-              </td>
-              <td>${isCompleted ? formatPercent(margin) : '—'}</td>
-              <td>${formatPercent(mortalityRate)}</td>
-            </tr>
-          `;
-        })
-        .join('')
-    : `
-      <tr>
-        <td colspan="8" class="text-mut" style="text-align: center; padding: 24px;">
-          No batches found matching filter criteria.
-        </td>
-      </tr>
-    `;
+        const profitDisplay = isClosed
+          ? `<span style="color:${typeof profit === 'number' && profit < 0 ? 'var(--bad)' : 'var(--ink)'}">${formatPeso(profit)}</span>`
+          : `<span class="text-mut">—</span>`;
+
+        const marginDisplay = isClosed && margin !== 'N/A'
+          ? formatPercent(margin)
+          : `<span class="text-mut">${isClosed ? 'N/A' : '—'}</span>`;
+
+        const statusBadge = batch.status === 'Open'
+          ? `<span class="badge-pill" style="background:var(--acc-light,#e3f0ff);color:var(--acc);">Open</span>`
+          : `<span class="badge-pill">Closed</span>`;
+
+        return `
+          <tr class="clickable-row" data-history-row data-batch-id="${batch.batch_id}" data-status="${batch.status}">
+            <td><b>${batch.batch_name}</b></td>
+            <td>${formatDate(batch.start_date, true)}</td>
+            <td>${batch.end_date ? formatDate(batch.end_date, true) : '—'}</td>
+            <td>${batch.initial_chick_count.toLocaleString()}</td>
+            <td>${statusBadge}</td>
+            <td>${profitDisplay}</td>
+            <td>${marginDisplay}</td>
+            <td>${formatPercent(mortalityRate)}</td>
+          </tr>`;
+      }).join('')
+    : `<tr><td colspan="8" class="text-mut" style="text-align:center;padding:24px;">No batches found matching filter criteria.</td></tr>`;
 
   return `
     <div class="top-bar">
@@ -121,8 +121,8 @@ export function attachHistoryListeners(container, onNavigate, onFilterChange) {
     row.addEventListener('click', () => {
       const batchId = row.getAttribute('data-batch-id');
       const status = row.getAttribute('data-status');
-      if (status === 'Active') {
-        onNavigate('active');
+      if (status === 'Open') {
+        onNavigate('batches');
       } else {
         onNavigate('summary', batchId);
       }

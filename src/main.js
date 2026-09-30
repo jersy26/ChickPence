@@ -6,16 +6,22 @@ import { syncEngine } from './services/syncEngine.js';
 import { renderShell, attachShellListeners } from './ui/shell.js';
 import { renderLogin, attachLoginListeners } from './ui/loginView.js';
 import { renderDashboard, attachDashboardListeners } from './ui/dashboardView.js';
-import { renderActiveBatch, attachActiveBatchListeners } from './ui/activeBatchView.js';
+import { renderBatches, attachBatchesListeners } from './ui/batchesView.js';
 import { renderHistory, attachHistoryListeners } from './ui/historyView.js';
 import { renderSummary, attachSummaryListeners } from './ui/summaryView.js';
+import { computeAllocationsForExpense } from './services/allocationEngine.js';
+import { db } from './db/dexie.js';
+import { showToast } from './ui/toast.js';
 
+// ---------------------------------------------------------------------------
 // Application state
+// ---------------------------------------------------------------------------
 const state = {
   view: 'dashboard',
-  selectedBatchId: null,
-  activeTab: 'Costs',
+  selectedBatchId: null,   // batch_id of the "focused" open batch in Batches view
+  activeTab: 'Expenses',
   editingItem: null,
+  expensePreview: null,    // Array of { batchName, feedShare, otherShare } | null
   historySearch: '',
   historyStatus: 'All',
   syncStatus: {
@@ -30,10 +36,10 @@ const state = {
 const appContainer = document.getElementById('app');
 
 async function initApp() {
-  // 1. Check & seed default prototype batches if IndexedDB is empty
+  // 1. Seed default data if IndexedDB is empty
   await checkAndSeedInitialData(false);
 
-  // 2. Initialize Authentication session
+  // 2. Initialize Authentication
   await AuthService.init();
 
   if (!AuthService.isLoggedIn()) {
@@ -42,19 +48,18 @@ async function initApp() {
     state.view = 'dashboard';
   }
 
-  // 3. Setup Sync Engine subscription
+  // 3. Sync engine subscription
   state.syncStatus = await syncEngine.getSyncStatus();
   syncEngine.subscribe((newStatus) => {
     state.syncStatus = newStatus;
     updateSyncIndicator();
   });
 
-  // Attempt initial sync if online
   if (syncEngine.isOnline()) {
     syncEngine.syncNow();
   }
 
-  // 4. Initial Render
+  // 4. Initial render
   await render();
 }
 
@@ -75,9 +80,7 @@ function updateSyncIndicator() {
   }
 
   const indicatorText = document.getElementById('sync-indicator-text');
-  if (indicatorText) {
-    indicatorText.innerHTML = syncHtml;
-  }
+  if (indicatorText) indicatorText.innerHTML = syncHtml;
 
   const toggleNetBtn = document.getElementById('btn-toggle-net');
   if (toggleNetBtn) {
@@ -103,77 +106,112 @@ async function render() {
   let contentHtml = '';
 
   if (state.view === 'dashboard') {
-    const activeBatch = await Repository.getActiveBatch();
-    let activeBatchData = null;
-    if (activeBatch) {
-      activeBatchData = await Repository.getBatchFullDetails(activeBatch.batch_id);
-    }
-    const completedBatchesWithData = await Repository.getCompletedBatchesWithData();
+    const [openBatchesData, closedBatchesData] = await Promise.all([
+      loadOpenBatchesData(),
+      Repository.getClosedBatchesWithData()
+    ]);
 
-    contentHtml = renderDashboard(activeBatchData, completedBatchesWithData);
-    appContainer.innerHTML = renderShell(
-      state.view,
-      contentHtml,
-      state.syncStatus,
-      navigate,
-      handleLogout,
-      render
-    );
-
+    contentHtml = renderDashboard(openBatchesData, closedBatchesData);
+    appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render);
     attachDashboardListeners(appContainer, navigate, render);
-  } else if (state.view === 'active') {
-    const activeBatch = await Repository.getActiveBatch();
-    let batchData = null;
-    if (activeBatch) {
-      batchData = await Repository.getBatchFullDetails(activeBatch.batch_id);
+
+  } else if (state.view === 'batches') {
+    const [openBatchesData, expenses] = await Promise.all([
+      loadOpenBatchesData(),
+      Repository.getAllExpenses()
+    ]);
+
+    // Default selectedBatchId to first open batch if not set
+    if (!state.selectedBatchId && openBatchesData.length) {
+      state.selectedBatchId = openBatchesData[0].batch.batch_id;
     }
 
-    contentHtml = renderActiveBatch(batchData, state.activeTab, state.editingItem);
-    appContainer.innerHTML = renderShell(
-      state.view,
-      contentHtml,
-      state.syncStatus,
-      navigate,
-      handleLogout,
-      render
+    contentHtml = renderBatches(
+      openBatchesData,
+      expenses,
+      state.selectedBatchId,
+      state.activeTab,
+      state.editingItem,
+      state.expensePreview
     );
 
+    appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render);
-    attachActiveBatchListeners(
+    attachBatchesListeners(
       appContainer,
       {
-        batchData,
+        openBatchesData,
+        expenses,
+        selectedBatchId: state.selectedBatchId,
         activeTab: state.activeTab,
-        editingItem: state.editingItem
+        editingItem: state.editingItem,
+        expensePreview: state.expensePreview
       },
       {
         onTabChange: (tab) => {
           state.activeTab = tab;
           state.editingItem = null;
+          state.expensePreview = null;
           render();
         },
         onReload: render,
         onNavigate: navigate,
+        onSelectBatch: (batchId) => {
+          state.selectedBatchId = batchId;
+        },
         onSetEdit: async (table, id) => {
-          if (!batchData) return;
-          if (table === 'daily_costs') {
-            state.editingItem = batchData.costs.find((c) => c.cost_id === id);
-          } else if (table === 'feed_logs') {
-            state.editingItem = batchData.feed.find((f) => f.feed_log_id === id);
-          } else if (table === 'mortality_logs') {
-            state.editingItem = batchData.mortality.find((m) => m.mortality_id === id);
-          } else if (table === 'sales') {
-            state.editingItem = batchData.sales.find((s) => s.sale_id === id);
+          if (table === 'expenses') {
+            state.editingItem = await Repository.getExpenseById(id);
+            state.activeTab = 'Expenses';
+            state.expensePreview = null;
+          } else {
+            // Find among all open batch data
+            const allFeed = openBatchesData.flatMap((d) => d.feed);
+            const allMort = openBatchesData.flatMap((d) => d.mortality);
+            const allSales = openBatchesData.flatMap((d) => d.sales);
+            if (table === 'feed_logs') state.editingItem = allFeed.find((f) => f.feed_log_id === id) || null;
+            else if (table === 'mortality_logs') state.editingItem = allMort.find((m) => m.mortality_id === id) || null;
+            else if (table === 'sales') state.editingItem = allSales.find((s) => s.sale_id === id) || null;
           }
           render();
         },
         onCancelEdit: () => {
           state.editingItem = null;
+          state.expensePreview = null;
+          render();
+        },
+        onExpensePreview: async (date, feedPeso, otherPeso) => {
+          // Build preview synchronously from local DB
+          const feedCentavos = Math.round(feedPeso * 100);
+          const otherCentavos = Math.round(otherPeso * 100);
+          const fakeExpense = { expense_id: 'preview', entry_date: date, feed_centavos: feedCentavos, other_centavos: otherCentavos };
+
+          const [allBatches, allMort, allSales] = await Promise.all([
+            db.batches.filter((b) => !b.deleted_at).toArray(),
+            db.mortality_logs.filter((m) => !m.deleted_at).toArray(),
+            db.sales.filter((s) => !s.deleted_at).toArray()
+          ]);
+
+          const result = computeAllocationsForExpense(fakeExpense, allBatches, allMort, allSales);
+          if (!result) {
+            showToast(`No batch is active on ${date}. Cannot allocate.`);
+            state.expensePreview = null;
+          } else {
+            state.expensePreview = result.rows.map((row) => {
+              const batch = allBatches.find((b) => b.batch_id === row.batch_id);
+              return {
+                batchName: batch?.batch_name || row.batch_id,
+                feedShare: row.feed_centavos / 100,
+                otherShare: row.other_centavos / 100
+              };
+            });
+          }
           render();
         }
       }
     );
+
   } else if (state.view === 'history') {
     const allBatches = await Repository.getAllBatches();
     const batchesWithFullData = [];
@@ -183,35 +221,20 @@ async function render() {
     }
 
     contentHtml = renderHistory(batchesWithFullData, state.historySearch, state.historyStatus);
-    appContainer.innerHTML = renderShell(
-      state.view,
-      contentHtml,
-      state.syncStatus,
-      navigate,
-      handleLogout,
-      render
-    );
-
+    appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render);
     attachHistoryListeners(appContainer, navigate, (search, status) => {
       if (search !== null) state.historySearch = search;
       if (status !== null) state.historyStatus = status;
       render();
     });
+
   } else if (state.view === 'summary') {
     const batchId = state.selectedBatchId;
     const batchData = batchId ? await Repository.getBatchFullDetails(batchId) : null;
 
     contentHtml = renderSummary(batchData);
-    appContainer.innerHTML = renderShell(
-      state.view,
-      contentHtml,
-      state.syncStatus,
-      navigate,
-      handleLogout,
-      render
-    );
-
+    appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render);
     attachSummaryListeners(appContainer, navigate);
   }
@@ -219,12 +242,22 @@ async function render() {
   updateSyncIndicator();
 }
 
+/** Load all open batches with their full details */
+async function loadOpenBatchesData() {
+  const openBatches = await Repository.getOpenBatches();
+  const results = [];
+  for (const b of openBatches) {
+    const details = await Repository.getBatchFullDetails(b.batch_id);
+    if (details) results.push(details);
+  }
+  return results;
+}
+
 function navigate(view, batchId = null) {
   state.view = view;
-  if (batchId) {
-    state.selectedBatchId = batchId;
-  }
+  if (batchId) state.selectedBatchId = batchId;
   state.editingItem = null;
+  state.expensePreview = null;
   window.scrollTo({ top: 0, behavior: 'smooth' });
   render();
 }
@@ -234,6 +267,7 @@ async function handleLogout() {
   state.view = 'login';
   state.selectedBatchId = null;
   state.editingItem = null;
+  state.expensePreview = null;
   render();
 }
 

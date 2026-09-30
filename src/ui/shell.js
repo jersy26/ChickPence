@@ -29,7 +29,7 @@ export function renderShell(activeView, contentHtml, syncStatus, onNavigate, onL
         </div>
 
         ${navItem('dashboard', 'Dashboard')}
-        ${navItem('active', 'Active Batch')}
+        ${navItem('batches', 'Batches')}
         ${navItem('history', 'History')}
 
         <button class="nav-link" id="btn-shell-logout">
