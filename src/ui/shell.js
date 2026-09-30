@@ -44,6 +44,10 @@ export function renderShell(activeView, contentHtml, syncStatus, onNavigate, onL
           <button class="btn-link" id="btn-open-cloud-config" style="margin-top: 2px;">
             ⚙ Supabase ${syncStatus.isSupabaseConnected ? '(Connected)' : '(Demo Mode)'}
           </button>
+          ${!syncStatus.isSupabaseConnected ? `
+          <button class="btn-link" id="btn-reset-demo" style="margin-top: 2px; color: var(--mut);" title="Clear IndexedDB and reload demo data">
+            ↺ Reset demo data
+          </button>` : ''}
         </div>
       </aside>
 
@@ -78,6 +82,16 @@ export function attachShellListeners(container, onNavigate, onLogout, onReload) 
   if (cloudBtn) {
     cloudBtn.addEventListener('click', () => {
       openSupabaseConfigModal(onReload);
+    });
+  }
+
+  const resetDemoBtn = container.querySelector('#btn-reset-demo');
+  if (resetDemoBtn) {
+    resetDemoBtn.addEventListener('click', async () => {
+      if (!confirm('Reset all demo data? This clears IndexedDB and reloads the seed batches.')) return;
+      const { checkAndSeedInitialData } = await import('../db/seed.js');
+      await checkAndSeedInitialData(true);
+      onReload();
     });
   }
 }

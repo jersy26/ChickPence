@@ -147,19 +147,21 @@ function generateExpenses(startDate, days, seed, dailyFeedBase, dailyOtherBase) 
 
 export async function checkAndSeedInitialData(force = false) {
   const count = await db.batches.count();
-  if (count > 0 && !force) {
+  const openCount = await db.batches.filter((b) => b.status === 'Open' && !b.deleted_at).count();
+
+  // Skip only if we already have data AND at least 2 open batches (happy state)
+  if (count > 0 && openCount >= 2 && !force) {
     return false;
   }
 
-  if (force) {
-    await db.batches.clear();
-    await db.feed_logs.clear();
-    await db.mortality_logs.clear();
-    await db.sales.clear();
-    await db.expenses.clear();
-    await db.allocations.clear();
-    await db.outbox.clear();
-  }
+  // Always do a full clear before seeding to avoid duplicate-key conflicts
+  await db.batches.clear();
+  await db.feed_logs.clear();
+  await db.mortality_logs.clear();
+  await db.sales.clear();
+  await db.expenses.clear();
+  await db.allocations.clear();
+  await db.outbox.clear();
 
   /**
    * Batch definitions.
