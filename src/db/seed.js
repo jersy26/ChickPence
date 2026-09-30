@@ -197,7 +197,7 @@ export async function checkAndSeedInitialData(force = false) {
     },
     {
       name: 'Batch 2026-09',
-      start: '2026-09-01',  // Open batch started in September
+      start: '2026-09-01',  // 2nd open batch — started September
       days: 30,
       chicks: 8000,
       seed: 88,
@@ -205,17 +205,6 @@ export async function checkAndSeedInitialData(force = false) {
       price: 105,
       closed: false,
       mt: 5
-    },
-    {
-      name: 'Batch 2026-10',
-      start: '2026-10-01',  // Newest open batch — started Oct 1, still in early weeks
-      days: 30,
-      chicks: 12000,
-      seed: 99,
-      mp: 0.028,
-      price: 110,
-      closed: false,
-      mt: 4
     }
   ];
 
