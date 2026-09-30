@@ -13,6 +13,15 @@ import { computeAllocationsForExpense } from './services/allocationEngine.js';
 import { db } from './db/dexie.js';
 import { showToast } from './ui/toast.js';
 
+function getInitialCollapsedBatchIds() {
+  try {
+    const raw = localStorage.getItem('chickpence_collapsed_batches');
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch (_) {
+    return new Set();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Application state
 // ---------------------------------------------------------------------------
@@ -24,6 +33,7 @@ const state = {
   expensePreview: null,    // Array of { batchName, feedShare, otherShare } | null
   historySearch: '',
   historyStatus: 'All',
+  collapsedBatchIds: getInitialCollapsedBatchIds(),
   syncStatus: {
     online: true,
     isSimulatedOffline: false,
@@ -111,10 +121,10 @@ async function render() {
       Repository.getClosedBatchesWithData()
     ]);
 
-    contentHtml = renderDashboard(openBatchesData, closedBatchesData);
+    contentHtml = renderDashboard(openBatchesData, closedBatchesData, state.collapsedBatchIds);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render);
-    attachDashboardListeners(appContainer, navigate, render);
+    attachDashboardListeners(appContainer, navigate, render, state.collapsedBatchIds, openBatchesData);
 
   } else if (state.view === 'batches') {
     const [openBatchesData, expenses] = await Promise.all([
@@ -133,7 +143,8 @@ async function render() {
       state.selectedBatchId,
       state.activeTab,
       state.editingItem,
-      state.expensePreview
+      state.expensePreview,
+      state.collapsedBatchIds
     );
 
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
@@ -146,7 +157,8 @@ async function render() {
         selectedBatchId: state.selectedBatchId,
         activeTab: state.activeTab,
         editingItem: state.editingItem,
-        expensePreview: state.expensePreview
+        expensePreview: state.expensePreview,
+        collapsedBatchIds: state.collapsedBatchIds
       },
       {
         onTabChange: (tab) => {

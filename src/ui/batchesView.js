@@ -12,7 +12,7 @@ import {
   formatPercent,
   formatDate
 } from '../services/calculations.js';
-import { calcBatchMetrics, evalMortalityWarning, liveHeadCount } from '../services/allocationEngine.js';
+import { calcBatchMetrics, liveHeadCount } from '../services/allocationEngine.js';
 import { Repository } from '../services/repository.js';
 import { openThresholdModal, openCloseBatchModal } from './modals.js';
 import { showToast } from './toast.js';
@@ -289,13 +289,26 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
     </div>`;
 }
 
+export function renderBatchToggleIcon(isCollapsed) {
+  if (isCollapsed) {
+    // Maximize icon (+)
+    return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19"></line>
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+    </svg>`;
+  }
+  // Minimize icon (-)
+  return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>`;
+}
+
 // ---------------------------------------------------------------------------
 // BATCH CARD (per open batch)
 // ---------------------------------------------------------------------------
 
-function renderOpenBatchCard(batchFullData, selectedBatchId, activeTab, editingItem, expensePreview, expenses) {
+function renderOpenBatchCard(batchFullData, selectedBatchId, activeTab, editingItem, expensePreview, expenses, isCollapsed = false) {
   const { batch, feed, mortality, sales, allocations } = batchFullData;
-  const warn = evalMortalityWarning(batch, mortality);
   const metrics = calcBatchMetrics(batch, allocations, sales, mortality, feed);
   const liveHeads = liveHeadCount(batch, mortality, sales, TODAY);
 
@@ -305,7 +318,18 @@ function renderOpenBatchCard(batchFullData, selectedBatchId, activeTab, editingI
     <div class="card-box" id="batch-card-${batch.batch_id}" style="margin-bottom: 14px;">
       <div class="flex-row" style="align-items: flex-start;">
         <div style="flex:1;">
-          <div class="flex-row" style="gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button
+              type="button"
+              class="btn-batch-toggle"
+              data-action="toggle-batch-collapse"
+              data-batch-id="${batch.batch_id}"
+              title="${isCollapsed ? 'Maximize' : 'Minimize'}"
+              aria-label="${isCollapsed ? 'Maximize ' + batch.batch_name : 'Minimize ' + batch.batch_name}"
+              aria-expanded="${!isCollapsed}"
+            >
+              ${renderBatchToggleIcon(isCollapsed)}
+            </button>
             <b style="font-size: 16px;">${batch.batch_name}</b>
           </div>
           <div class="text-mut" style="font-size: 12px; margin-top: 2px;">
@@ -318,35 +342,35 @@ function renderOpenBatchCard(batchFullData, selectedBatchId, activeTab, editingI
         </div>
       </div>
 
-      <div class="grid-3" style="margin-top: 8px;">
-        <div class="card-box kpi-card">
-          <span class="text-mut">Cost to Date</span>
-          <b>${formatPeso(metrics.totalCost)}</b>
-          <span class="text-mut" style="font-size:11px;">Provisional</span>
+      <div class="batch-card-body" id="batch-body-${batch.batch_id}" style="${isCollapsed ? 'display: none;' : ''}">
+        <div class="grid-3" style="margin-top: 8px;">
+          <div class="card-box kpi-card">
+            <span class="text-mut">Cost to Date</span>
+            <b>${formatPeso(metrics.totalCost)}</b>
+            <span class="text-mut" style="font-size:11px;">Provisional</span>
+          </div>
+          <div class="card-box kpi-card">
+            <span class="text-mut">Sales to Date</span>
+            <b>${formatPeso(metrics.revenue)}</b>
+          </div>
+          <div class="card-box kpi-card">
+            <span class="text-mut">Mortality</span>
+            <b>${metrics.totalDeaths.toLocaleString()} / ${batch.initial_chick_count.toLocaleString()} (${formatPercent(metrics.mortalityRate)})</b>
+          </div>
         </div>
-        <div class="card-box kpi-card">
-          <span class="text-mut">Sales to Date</span>
-          <b>${formatPeso(metrics.revenue)}</b>
+
+        <div class="tab-nav" style="margin-top: 10px;">
+          ${['Feed', 'Mortality', 'Sales'].map((t) => `
+            <button class="${isSelected && activeTab === t ? 'active' : ''}" data-batch-tab="${t}" data-batch-id="${batch.batch_id}">${t}</button>
+          `).join('')}
         </div>
-        <div class="card-box kpi-card">
-          <span class="text-mut">Mortality</span>
-          <b>${metrics.totalDeaths.toLocaleString()} / ${batch.initial_chick_count.toLocaleString()} (${formatPercent(metrics.mortalityRate)})</b>
-        </div>
+
+        ${isSelected ? `
+          <div class="card-box table-wrap" style="margin-top: 6px;">
+            ${renderDataTable(activeTab, batchFullData)}
+          </div>
+        ` : ''}
       </div>
-
-      ${warn.mortalityFlag ? `<div class="flag-alert" style="margin-top:6px;">⚠ Mortality ${formatPercent(warn.mortalityRate)} exceeds threshold (${warn.mortalityThreshold}%)</div>` : ''}
-
-      <div class="tab-nav" style="margin-top: 10px;">
-        ${['Feed', 'Mortality', 'Sales'].map((t) => `
-          <button class="${isSelected && activeTab === t ? 'active' : ''}" data-batch-tab="${t}" data-batch-id="${batch.batch_id}">${t}</button>
-        `).join('')}
-      </div>
-
-      ${isSelected ? `
-        <div class="card-box table-wrap" style="margin-top: 6px;">
-          ${renderDataTable(activeTab, batchFullData)}
-        </div>
-      ` : ''}
     </div>`;
 }
 
@@ -354,16 +378,36 @@ function renderOpenBatchCard(batchFullData, selectedBatchId, activeTab, editingI
 // MAIN RENDER
 // ---------------------------------------------------------------------------
 
-export function renderBatches(openBatchesData, expenses, selectedBatchId, activeTab, editingItem, expensePreview) {
+export function renderBatches(
+  openBatchesData,
+  expenses,
+  selectedBatchId,
+  activeTab,
+  editingItem,
+  expensePreview,
+  collapsedBatchIds = new Set()
+) {
   const TODAY = new Date().toISOString().slice(0, 10);
 
   const openBatches = openBatchesData.map((d) => d.batch);
 
   const expenseRows = renderExpenseTable(expenses, []);
 
+  const allCollapsed =
+    openBatchesData.length > 0 &&
+    openBatchesData.every((bd) => collapsedBatchIds.has(bd.batch.batch_id));
+
   const batchCardsHtml = openBatchesData.length
     ? openBatchesData.map((bd) =>
-        renderOpenBatchCard(bd, selectedBatchId, activeTab, editingItem, expensePreview, expenses)
+        renderOpenBatchCard(
+          bd,
+          selectedBatchId,
+          activeTab,
+          editingItem,
+          expensePreview,
+          expenses,
+          collapsedBatchIds.has(bd.batch.batch_id)
+        )
       ).join('')
     : `<div class="card-box text-mut" style="padding:24px;text-align:center;">
         No open batches. Create one below.
@@ -409,8 +453,15 @@ export function renderBatches(openBatchesData, expenses, selectedBatchId, active
     </div>
 
     <!-- OPEN BATCHES LIST -->
-    <div style="font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.05em;margin-bottom:6px;">
-      Open Batches
+    <div class="flex-row" style="margin-bottom:6px;align-items:center;">
+      <div style="font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.05em;">
+        Open Batches
+      </div>
+      ${openBatchesData.length > 1 ? `
+        <button class="btn-link" id="btn-toggle-all-open-batches" style="font-size:11px;font-weight:600;text-transform:uppercase;">
+          ${allCollapsed ? '+ Maximize All' : '− Minimize All'}
+        </button>
+      ` : ''}
     </div>
     ${batchCardsHtml}
 
@@ -484,6 +535,59 @@ export function attachBatchesListeners(container, state, callbacks) {
     } catch (err) {
       showToast(err.message || 'Failed to create batch');
     }
+  });
+
+  // Batch minimize / maximize toggle
+  container.querySelectorAll('[data-action="toggle-batch-collapse"]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const batchId = btn.getAttribute('data-batch-id');
+      const collapsedSet = state.collapsedBatchIds || new Set();
+      const isNowCollapsed = !collapsedSet.has(batchId);
+
+      if (isNowCollapsed) {
+        collapsedSet.add(batchId);
+      } else {
+        collapsedSet.delete(batchId);
+      }
+      try {
+        localStorage.setItem('chickpence_collapsed_batches', JSON.stringify([...collapsedSet]));
+      } catch (_) {}
+
+      const body = container.querySelector(`#batch-body-${batchId}`);
+      if (body) {
+        body.style.display = isNowCollapsed ? 'none' : '';
+      }
+      btn.setAttribute('title', isNowCollapsed ? 'Maximize' : 'Minimize');
+      btn.setAttribute('aria-label', `${isNowCollapsed ? 'Maximize' : 'Minimize'} batch`);
+      btn.setAttribute('aria-expanded', String(!isNowCollapsed));
+      btn.innerHTML = renderBatchToggleIcon(isNowCollapsed);
+
+      const allToggleBtn = container.querySelector('#btn-toggle-all-open-batches');
+      if (allToggleBtn && state.openBatchesData) {
+        const allCollapsed =
+          state.openBatchesData.length > 0 &&
+          state.openBatchesData.every((d) => collapsedSet.has(d.batch.batch_id));
+        allToggleBtn.textContent = allCollapsed ? '+ Maximize All' : '− Minimize All';
+      }
+    });
+  });
+
+  // Toggle all open batches
+  container.querySelector('#btn-toggle-all-open-batches')?.addEventListener('click', () => {
+    const collapsedSet = state.collapsedBatchIds || new Set();
+    const allCollapsed =
+      state.openBatchesData.length > 0 &&
+      state.openBatchesData.every((d) => collapsedSet.has(d.batch.batch_id));
+    if (allCollapsed) {
+      state.openBatchesData.forEach((d) => collapsedSet.delete(d.batch.batch_id));
+    } else {
+      state.openBatchesData.forEach((d) => collapsedSet.add(d.batch.batch_id));
+    }
+    try {
+      localStorage.setItem('chickpence_collapsed_batches', JSON.stringify([...collapsedSet]));
+    } catch (_) {}
+    onReload();
   });
 
   // Threshold editing

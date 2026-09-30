@@ -8,12 +8,15 @@ class SyncEngine {
     this.isSyncing = false;
     this.listeners = new Set();
 
-    window.addEventListener('online', () => this.handleNetworkChange());
-    window.addEventListener('offline', () => this.handleNetworkChange());
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => this.handleNetworkChange());
+      window.addEventListener('offline', () => this.handleNetworkChange());
+    }
   }
 
   isOnline() {
-    return navigator.onLine && !this.isSimulatedOffline;
+    const navOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    return navOnline && !this.isSimulatedOffline;
   }
 
   toggleSimulatedOffline() {

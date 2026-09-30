@@ -14,8 +14,10 @@ export function showToast(message, duration = 2400) {
 }
 
 // Global listener for custom toast events
-window.addEventListener('chickpence-toast', (e) => {
-  if (e.detail) {
-    showToast(e.detail);
-  }
-});
+if (typeof window !== 'undefined') {
+  window.addEventListener('chickpence-toast', (e) => {
+    if (e.detail) {
+      showToast(e.detail);
+    }
+  });
+}

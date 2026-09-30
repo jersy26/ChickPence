@@ -248,6 +248,37 @@ h2 {
   white-space: nowrap;
 }
 
+.btn-batch-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--ln);
+  background: var(--fill);
+  color: var(--ink);
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.btn-batch-toggle:hover {
+  background: var(--card);
+  border-color: var(--ink);
+  transform: scale(1.05);
+}
+
+.btn-batch-toggle:active {
+  transform: scale(0.95);
+}
+
+.batch-card-body {
+  transition: opacity 0.15s ease-in-out;
+}
+
 .flag-alert {
   border: 1px solid var(--bad);
   background: rgba(179, 38, 30, 0.08);

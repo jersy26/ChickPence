@@ -11,6 +11,7 @@ import { calcBatchMetrics, evalMortalityWarning, liveHeadCount } from '../servic
 import { openThresholdModal } from './modals.js';
 import { Repository } from '../services/repository.js';
 import { showToast } from './toast.js';
+import { renderBatchToggleIcon } from './batchesView.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -60,7 +61,7 @@ function renderNetProfitChart(last5Batches) {
     </svg>`;
 }
 
-export function renderDashboard(openBatchesData, closedBatchesWithData) {
+export function renderDashboard(openBatchesData, closedBatchesWithData, collapsedBatchIds = new Set()) {
   // Build enriched closed batch data with netProfit for chart
   const enrichedClosed = closedBatchesWithData.map((item) => {
     const metrics = calcBatchMetrics(item.batch, item.allocations, item.sales, item.mortality, item.feed);
@@ -69,6 +70,10 @@ export function renderDashboard(openBatchesData, closedBatchesWithData) {
 
   const { last5, avgNetProfit, avgSellingPricePerKg } = calcDashboardAverages(enrichedClosed);
 
+  const allCollapsed =
+    openBatchesData.length > 0 &&
+    openBatchesData.every((item) => collapsedBatchIds.has(item.batch.batch_id));
+
   // Open batches summary cards
   const openCardsHtml = openBatchesData.length
     ? openBatchesData.map((item) => {
@@ -76,30 +81,44 @@ export function renderDashboard(openBatchesData, closedBatchesWithData) {
         const metrics = calcBatchMetrics(batch, allocations, sales, mortality, feed);
         const warn = evalMortalityWarning(batch, mortality);
         const liveHeads = liveHeadCount(batch, mortality, sales, TODAY);
+        const isCollapsed = collapsedBatchIds.has(batch.batch_id);
 
         return `
-          <div class="card-box" style="margin-bottom: 10px;">
+          <div class="card-box" id="dash-batch-card-${batch.batch_id}" style="margin-bottom: 10px;">
             <div class="flex-row">
-              <div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button
+                  type="button"
+                  class="btn-batch-toggle"
+                  data-action="toggle-dash-batch-collapse"
+                  data-batch-id="${batch.batch_id}"
+                  title="${isCollapsed ? 'Maximize' : 'Minimize'}"
+                  aria-label="${isCollapsed ? 'Maximize ' + batch.batch_name : 'Minimize ' + batch.batch_name}"
+                  aria-expanded="${!isCollapsed}"
+                >
+                  ${renderBatchToggleIcon(isCollapsed)}
+                </button>
                 <b style="font-size: 15px;">${batch.batch_name}</b>
               </div>
               <span class="text-mut">Started ${formatDate(batch.start_date, true)} · <b>${liveHeads.toLocaleString()}</b> live</span>
             </div>
-            <div class="grid-3" style="margin-top:6px;">
-              <div class="card-box kpi-card">
-                <span class="text-mut">Cost to Date</span>
-                <b>${formatPeso(metrics.totalCost)}</b>
+            <div class="batch-card-body" id="dash-batch-body-${batch.batch_id}" style="${isCollapsed ? 'display: none;' : ''}">
+              <div class="grid-3" style="margin-top:6px;">
+                <div class="card-box kpi-card">
+                  <span class="text-mut">Cost to Date</span>
+                  <b>${formatPeso(metrics.totalCost)}</b>
+                </div>
+                <div class="card-box kpi-card">
+                  <span class="text-mut">Sales to Date</span>
+                  <b>${formatPeso(metrics.revenue)}</b>
+                </div>
+                <div class="card-box kpi-card">
+                  <span class="text-mut">Mortality</span>
+                  <b>${formatPercent(metrics.mortalityRate)}</b>
+                </div>
               </div>
-              <div class="card-box kpi-card">
-                <span class="text-mut">Sales to Date</span>
-                <b>${formatPeso(metrics.revenue)}</b>
-              </div>
-              <div class="card-box kpi-card">
-                <span class="text-mut">Mortality</span>
-                <b>${formatPercent(metrics.mortalityRate)}</b>
-              </div>
+              ${warn.mortalityFlag ? `<div class="flag-alert" style="margin-top:6px;">⚠ Mortality ${formatPercent(warn.mortalityRate)} exceeds threshold (${warn.mortalityThreshold}%)</div>` : ''}
             </div>
-            ${warn.mortalityFlag ? `<div class="flag-alert" style="margin-top:6px;">⚠ Mortality ${formatPercent(warn.mortalityRate)} exceeds threshold (${warn.mortalityThreshold}%)</div>` : ''}
           </div>`;
       }).join('')
     : `<div class="card-box" style="text-align:center;padding:24px;">
@@ -113,8 +132,15 @@ export function renderDashboard(openBatchesData, closedBatchesWithData) {
       <button class="btn-action primary" data-action="go-batches">Batches →</button>
     </div>
 
-    <div class="text-mut" style="font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.05em;">
-      Open Batches
+    <div class="flex-row" style="margin-bottom:6px;align-items:center;">
+      <div class="text-mut" style="font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.05em;">
+        Open Batches
+      </div>
+      ${openBatchesData.length > 1 ? `
+        <button class="btn-link" id="btn-toggle-all-dash-batches" style="font-size:11px;font-weight:600;text-transform:uppercase;">
+          ${allCollapsed ? '+ Maximize All' : '− Minimize All'}
+        </button>
+      ` : ''}
     </div>
     ${openCardsHtml}
 
@@ -157,9 +183,64 @@ export function renderDashboard(openBatchesData, closedBatchesWithData) {
   `;
 }
 
-export function attachDashboardListeners(container, onNavigate, onReload) {
+export function attachDashboardListeners(
+  container,
+  onNavigate,
+  onReload,
+  collapsedBatchIds = new Set(),
+  openBatchesData = []
+) {
   container.querySelectorAll('[data-action="go-batches"]').forEach((btn) => {
     btn.addEventListener('click', () => onNavigate('batches'));
+  });
+
+  // Open batch minimize / maximize toggle on dashboard
+  container.querySelectorAll('[data-action="toggle-dash-batch-collapse"]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const batchId = btn.getAttribute('data-batch-id');
+      const isNowCollapsed = !collapsedBatchIds.has(batchId);
+
+      if (isNowCollapsed) {
+        collapsedBatchIds.add(batchId);
+      } else {
+        collapsedBatchIds.delete(batchId);
+      }
+      try {
+        localStorage.setItem('chickpence_collapsed_batches', JSON.stringify([...collapsedBatchIds]));
+      } catch (_) {}
+
+      const body = container.querySelector(`#dash-batch-body-${batchId}`);
+      if (body) {
+        body.style.display = isNowCollapsed ? 'none' : '';
+      }
+      btn.setAttribute('title', isNowCollapsed ? 'Maximize' : 'Minimize');
+      btn.setAttribute('aria-label', `${isNowCollapsed ? 'Maximize' : 'Minimize'} batch`);
+      btn.setAttribute('aria-expanded', String(!isNowCollapsed));
+      btn.innerHTML = renderBatchToggleIcon(isNowCollapsed);
+
+      const allToggleBtn = container.querySelector('#btn-toggle-all-dash-batches');
+      if (allToggleBtn && openBatchesData.length > 0) {
+        const allCollapsed = openBatchesData.every((d) => collapsedBatchIds.has(d.batch.batch_id));
+        allToggleBtn.textContent = allCollapsed ? '+ Maximize All' : '− Minimize All';
+      }
+    });
+  });
+
+  // Toggle all open batches on dashboard
+  container.querySelector('#btn-toggle-all-dash-batches')?.addEventListener('click', () => {
+    const allCollapsed =
+      openBatchesData.length > 0 &&
+      openBatchesData.every((d) => collapsedBatchIds.has(d.batch.batch_id));
+    if (allCollapsed) {
+      openBatchesData.forEach((d) => collapsedBatchIds.delete(d.batch.batch_id));
+    } else {
+      openBatchesData.forEach((d) => collapsedBatchIds.add(d.batch.batch_id));
+    }
+    try {
+      localStorage.setItem('chickpence_collapsed_batches', JSON.stringify([...collapsedBatchIds]));
+    } catch (_) {}
+    onReload();
   });
 
   container.querySelectorAll('.chart-bar-group').forEach((bar) => {
