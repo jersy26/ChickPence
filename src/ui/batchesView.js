@@ -63,12 +63,18 @@ function renderDataTable(activeTab, batchData) {
         <tbody>
           ${
             rows.length
-              ? rows.map((f) => `
+              ? rows.map((f) => {
+                  // quantity_g is integer grams (v3+); fall back to quantity_kg for pre-migration rows
+                  const dispKg = f.quantity_g !== undefined
+                    ? (Number(f.quantity_g) || 0) / 1000
+                    : (Number(f.quantity_kg) || 0);
+                  return `
                 <tr>
                   <td>${formatDate(f.entry_date)}</td>
-                  <td><b>${Number(f.quantity_kg).toLocaleString()} kg</b></td>
+                  <td><b>${dispKg.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} kg</b></td>
                   <td>${editBtn('feed_logs', f.feed_log_id)}</td>
-                </tr>`).join('')
+                </tr>`;
+              }).join('')
               : emptyRow(3)
           }
         </tbody>
@@ -222,7 +228,13 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
         </label>
         <label class="form-field">
           Quantity Consumed (kg)
-          <input id="input-feed-kg" type="number" min="0.01" step="any" placeholder="0.00" value="${val('quantity_kg', '')}" />
+          <input id="input-feed-kg" type="number" min="0.001" step="any" placeholder="0.000" value="${
+            editingItem
+              ? (editingItem.quantity_g !== undefined
+                  ? ((Number(editingItem.quantity_g) || 0) / 1000).toFixed(3)
+                  : (Number(editingItem.quantity_kg) || 0))
+              : ''
+          }" />
         </label>
         <button class="btn-action primary" id="btn-save-entry" style="margin-top:4px;">
           ${editingItem ? 'Save Changes' : 'Save Entry'}
