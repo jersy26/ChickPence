@@ -31,6 +31,7 @@ const state = {
   activeTab: 'Expenses',
   editingItem: null,
   expensePreview: null,    // Array of { batchName, feedShare, otherShare } | null
+  expenseVisibleCount: 15, // how many Farm Expenses rows are shown before "Load More"
   historySearch: '',
   historyStatus: 'All',
   collapsedBatchIds: getInitialCollapsedBatchIds(),
@@ -124,7 +125,7 @@ async function render() {
     contentHtml = renderDashboard(openBatchesData, closedBatchesData, state.collapsedBatchIds);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render);
-    attachDashboardListeners(appContainer, navigate, render, state.collapsedBatchIds, openBatchesData);
+    attachDashboardListeners(appContainer, navigate, render, state.collapsedBatchIds, openBatchesData, closedBatchesData);
 
   } else if (state.view === 'batches') {
     const [openBatchesData, expenses] = await Promise.all([
@@ -144,7 +145,8 @@ async function render() {
       state.activeTab,
       state.editingItem,
       state.expensePreview,
-      state.collapsedBatchIds
+      state.collapsedBatchIds,
+      state.expenseVisibleCount
     );
 
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
@@ -219,6 +221,10 @@ async function render() {
               };
             });
           }
+          render();
+        },
+        onLoadMoreExpenses: () => {
+          state.expenseVisibleCount += 15;
           render();
         }
       }

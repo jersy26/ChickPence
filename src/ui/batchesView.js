@@ -19,6 +19,7 @@ import { showToast } from './toast.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const NA = 'N/A';
+const EXPENSE_PAGE_SIZE = 15;
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -175,7 +176,7 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
     }
 
     return `
-      <div class="side-panel">
+      <div class="side-panel expense-panel">
         <div style="font-weight:600;margin-bottom:6px;">${editingItem ? 'Edit Expense' : 'New Farm Expense'}</div>
         ${editingItem ? `<div class="ok-line flex-row"><span>Editing Entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
         <label class="form-field">
@@ -191,10 +192,10 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
           <input id="input-exp-other" type="number" min="0" step="0.01" placeholder="0.00" value="${otherVal}" />
         </label>
         ${previewHtml}
-        <button class="btn-action primary" id="btn-preview-expense" style="margin-top:4px;">
+        <button class="btn-action" id="btn-preview-expense" style="margin-top:4px;">
           ${expensePreview ? 'Refresh Preview' : 'Preview Allocation'}
         </button>
-        <button class="btn-action primary" id="btn-save-expense" style="margin-top:4px;" ${!expensePreview ? 'disabled' : ''}>
+        <button class="btn-action accent" id="btn-save-expense" style="margin-top:4px;" ${!expensePreview ? 'disabled' : ''}>
           ${editingItem ? 'Save Changes' : 'Save Expense'}
         </button>
       </div>`;
@@ -333,7 +334,7 @@ function renderOpenBatchCard(batchFullData, selectedBatchId, activeTab, editingI
             <b style="font-size: 16px;">${batch.batch_name}</b>
           </div>
           <div class="text-mut" style="font-size: 12px; margin-top: 2px;">
-            Started ${formatDate(batch.start_date, true)} · ${batch.initial_chick_count.toLocaleString()} chicks initial · <b>${liveHeads.toLocaleString()}</b> live today
+            Started ${formatDate(batch.start_date, true)} · ${batch.initial_chick_count.toLocaleString()} chicks initial · <b class="live-count-chip">${liveHeads.toLocaleString()}</b> live today
           </div>
         </div>
         <div class="flex-row" style="gap: 6px;">
@@ -385,13 +386,16 @@ export function renderBatches(
   activeTab,
   editingItem,
   expensePreview,
-  collapsedBatchIds = new Set()
+  collapsedBatchIds = new Set(),
+  expenseVisibleCount = EXPENSE_PAGE_SIZE
 ) {
   const TODAY = new Date().toISOString().slice(0, 10);
 
   const openBatches = openBatchesData.map((d) => d.batch);
 
-  const expenseRows = renderExpenseTable(expenses, []);
+  const visibleExpenses = expenses.slice(0, expenseVisibleCount);
+  const expenseRows = renderExpenseTable(visibleExpenses, []);
+  const remainingExpenseCount = expenses.length - visibleExpenses.length;
 
   const allCollapsed =
     openBatchesData.length > 0 &&
@@ -420,7 +424,7 @@ export function renderBatches(
   return `
     <div class="top-bar">
       <h1>Open Batches</h1>
-      <button class="btn-action primary" id="btn-show-new-batch-form">+ New Batch</button>
+      <button class="btn-action accent" id="btn-show-new-batch-form">+ New Batch</button>
     </div>
 
     <!-- NEW BATCH FORM (hidden by default) -->
@@ -479,6 +483,11 @@ export function renderBatches(
             <tbody>${expenseRows}</tbody>
           </table>
         </div>
+        ${remainingExpenseCount > 0 ? `
+          <div class="load-more-row">
+            <button class="btn-action" id="btn-load-more-expenses">Load More (${remainingExpenseCount} older)</button>
+          </div>
+        ` : ''}
       </div>
 
       <div class="split-right">
@@ -496,7 +505,11 @@ export function renderBatches(
 // ---------------------------------------------------------------------------
 
 export function attachBatchesListeners(container, state, callbacks) {
-  const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview } = callbacks;
+  const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview, onLoadMoreExpenses } = callbacks;
+
+  container.querySelector('#btn-load-more-expenses')?.addEventListener('click', () => {
+    onLoadMoreExpenses?.();
+  });
 
   // Show / hide new batch form
   container.querySelector('#btn-show-new-batch-form')?.addEventListener('click', () => {
