@@ -14,8 +14,6 @@ import { showToast } from './toast.js';
 import { renderBatchToggleIcon } from './batchesView.js';
 import {
   Chart,
-  BarController,
-  BarElement,
   LineController,
   LineElement,
   PointElement,
@@ -26,8 +24,6 @@ import {
 } from 'chart.js';
 
 Chart.register(
-  BarController,
-  BarElement,
   LineController,
   LineElement,
   PointElement,
@@ -40,7 +36,6 @@ Chart.register(
 const TODAY = new Date().toISOString().slice(0, 10);
 const CHART_FONT = "'Poppins', sans-serif";
 
-let barChartInstance = null;
 let lineChartInstance = null;
 
 function cssVar(name, fallback) {
@@ -159,7 +154,7 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
   return `
     <div class="top-bar">
       <h1>Dashboard</h1>
-      <button class="btn-action primary" data-action="go-batches">Batches →</button>
+
     </div>
 
     <div class="dash-warnings-panel dash-animate ${hasActiveWarning ? 'has-alert' : ''}" style="--dash-delay:0s;">
@@ -172,31 +167,21 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
     </div>
 
     <div class="dash-section-label" style="margin-top:4px;">Performance</div>
-    <div class="dash-charts-grid">
-      <div class="card-box dash-chart-card dash-animate" style="--dash-delay:.05s;">
-        <div class="dash-chart-head">
-          <h2>Last 5 Batches Net Profit</h2>
-          <span class="text-mut">Closed batches · tap a bar for the full report</span>
-        </div>
-        ${last5.length ? `<div class="chart-canvas-wrap"><canvas id="dash-bar-chart"></canvas></div>` : emptyChartMsg}
-        <div class="stat-mini-row">
-          <div class="stat-tile-mini">
-            <span class="stat-mini-label">Avg Net Profit</span>
-            <b class="stat-mini-value">${formatPeso(avgNetProfit)}</b>
-          </div>
-          <div class="stat-tile-mini">
-            <span class="stat-mini-label">Avg Price / KG</span>
-            <b class="stat-mini-value">${formatPeso(avgSellingPricePerKg)}</b>
-          </div>
-        </div>
+    <div class="card-box dash-chart-card dash-animate" style="--dash-delay:.05s;">
+      <div class="dash-chart-head">
+        <h2>Net Profit Trend</h2>
+        <span class="text-mut">All closed batches over time</span>
       </div>
-
-      <div class="card-box dash-chart-card dash-animate" style="--dash-delay:.1s;">
-        <div class="dash-chart-head">
-          <h2>Net Profit Trend</h2>
-          <span class="text-mut">All closed batches over time</span>
+      ${allClosedSorted.length ? `<div class="chart-canvas-wrap"><canvas id="dash-line-chart"></canvas></div>` : emptyChartMsg}
+      <div class="stat-mini-row">
+        <div class="stat-tile-mini">
+          <span class="stat-mini-label">Avg Net Profit</span>
+          <b class="stat-mini-value">${formatPeso(avgNetProfit)}</b>
         </div>
-        ${allClosedSorted.length ? `<div class="chart-canvas-wrap"><canvas id="dash-line-chart"></canvas></div>` : emptyChartMsg}
+        <div class="stat-tile-mini">
+          <span class="stat-mini-label">Avg Price / KG</span>
+          <b class="stat-mini-value">${formatPeso(avgSellingPricePerKg)}</b>
+        </div>
       </div>
     </div>
 
@@ -213,16 +198,12 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
 }
 
 function renderDashboardCharts(container, closedBatchesWithData, onNavigate) {
-  if (barChartInstance) {
-    barChartInstance.destroy();
-    barChartInstance = null;
-  }
   if (lineChartInstance) {
     lineChartInstance.destroy();
     lineChartInstance = null;
   }
 
-  const { last5, allClosedSorted } = getDashboardChartData(closedBatchesWithData);
+  const { allClosedSorted } = getDashboardChartData(closedBatchesWithData);
 
   const accent = cssVar('--acc', '#c98a00');
   const bad = cssVar('--bad', '#b3261e');
@@ -230,71 +211,7 @@ function renderDashboardCharts(container, closedBatchesWithData, onNavigate) {
   const ln = cssVar('--ln', '#d6d3ca');
   const ink = cssVar('--ink', '#1f1f1c');
 
-  const barCanvas = container.querySelector('#dash-bar-chart');
-  if (barCanvas && last5.length) {
-    const labels = last5.map((item) => item.batch.batch_name.replace(/^Batch\s*/i, ''));
-    const profits = last5.map((item) => item.netProfit || 0);
-    const batchIds = last5.map((item) => item.batch.batch_id);
 
-    barChartInstance = new Chart(barCanvas, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          data: profits,
-          borderRadius: 6,
-          borderSkipped: false,
-          barPercentage: 0.55,
-          backgroundColor: (ctx) => {
-            const { chart, dataIndex } = ctx;
-            const { ctx: c, chartArea } = chart;
-            if (!chartArea) return accent;
-            const isPos = (profits[dataIndex] || 0) >= 0;
-            const gradient = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-            const base = isPos ? accent : bad;
-            gradient.addColorStop(0, hexToRgba(base, 0.95));
-            gradient.addColorStop(1, hexToRgba(base, 0.25));
-            return gradient;
-          },
-          hoverBackgroundColor: (ctx) => (profits[ctx.dataIndex] >= 0 ? accent : bad)
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 800, easing: 'easeOutQuart' },
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: (ctx) => formatPeso(ctx.raw) } }
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { color: mut, font: { family: CHART_FONT, size: 11 } }
-          },
-          y: {
-            grid: { color: ln },
-            ticks: {
-              color: mut,
-              font: { family: CHART_FONT, size: 11 },
-              callback: (val) => `${Math.round(val / 1000)}k`
-            }
-          }
-        },
-        onClick: (evt, elements) => {
-          if (elements.length) {
-            const batchId = batchIds[elements[0].index];
-            if (batchId) onNavigate('summary', batchId);
-          }
-        },
-        onHover: (evt, elements) => {
-          if (evt.native?.target) {
-            evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
-          }
-        }
-      }
-    });
-  }
 
   const lineCanvas = container.querySelector('#dash-line-chart');
   if (lineCanvas && allClosedSorted.length) {

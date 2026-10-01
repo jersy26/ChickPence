@@ -37,19 +37,7 @@ export function renderShell(activeView, contentHtml, syncStatus, onNavigate, onL
           Logout
         </button>
 
-        <div class="sync-status-box" id="sidebar-sync-box">
-          <div id="sync-indicator-text">${syncHtml}</div>
-          <button class="btn-link" id="btn-toggle-net">
-            ${syncStatus.isSimulatedOffline ? 'Go online' : 'Simulate offline'}
-          </button>
-          <button class="btn-link" id="btn-open-cloud-config" style="margin-top: 2px;">
-            ⚙ Supabase ${syncStatus.isSupabaseConnected ? '(Connected)' : '(Demo Mode)'}
-          </button>
-          ${!syncStatus.isSupabaseConnected ? `
-          <button class="btn-link" id="btn-reset-demo" style="margin-top: 2px; color: var(--mut);" title="Clear IndexedDB and reload demo data">
-            ↺ Reset demo data
-          </button>` : ''}
-        </div>
+
       </aside>
 
       <main class="main-content">
