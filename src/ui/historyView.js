@@ -47,7 +47,7 @@ export function renderHistory(batchesWithFullData, searchQuery = '', statusFilte
           : `<span class="text-mut">${isClosed ? 'N/A' : '—'}</span>`;
 
         const statusBadge = batch.status === 'Open'
-          ? `<span class="badge-pill" style="background:var(--acc-light,#e3f0ff);color:var(--acc);">Open</span>`
+          ? `<span class="badge-pill status-open">Open</span>`
           : `<span class="badge-pill">Closed</span>`;
 
         return `

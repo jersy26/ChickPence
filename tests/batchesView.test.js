@@ -75,9 +75,11 @@ describe('Minimize / Maximize Batch Toggle', () => {
     expect(html).toContain('title="Minimize"');
     expect(html).toContain('aria-expanded="true"');
 
-    // Button is positioned before batch name
+    // Button is positioned before the batch name heading within its own card
+    // (searched from the button's position, since the Dashboard may also
+    // mention the batch name earlier on the page, e.g. in a warnings panel)
     const buttonPos = html.indexOf('data-action="toggle-dash-batch-collapse"');
-    const namePos = html.indexOf('Batch 2026-07');
+    const namePos = html.indexOf('Batch 2026-07', buttonPos);
     expect(buttonPos).toBeLessThan(namePos);
   });
 });

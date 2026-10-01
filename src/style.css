@@ -1,15 +1,26 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
 :root {
-  --bg: #f4f3ef;
+  --bg: #f5f4ef;
   --card: #ffffff;
+  --card-2: #faf9f5;
   --ink: #1f1f1c;
-  --mut: #77756e;
-  --ln: #d6d3ca;
-  --fill: #ebe9e2;
+  --mut: #726f67;
+  --ln: #e1ddd2;
+  --fill: #eeece3;
   --acc: #c98a00;
+  --acc-2: #e8ad33;
+  --acc-soft: rgba(201, 138, 0, 0.12);
   --bad: #b3261e;
   --ok: #2e7d32;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --shadow-card: 0 1px 2px rgba(31, 31, 28, 0.04), 0 1px 1px rgba(31, 31, 28, 0.03);
   box-sizing: border-box;
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -17,28 +28,36 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #171715;
-    --card: #232321;
-    --ink: #eeede8;
-    --mut: #9a988f;
-    --ln: #45443f;
-    --fill: #302f2c;
-    --acc: #e0a91f;
-    --bad: #f2857e;
-    --ok: #7bc47f;
+    --bg: #14140f;
+    --card: #201f1a;
+    --card-2: #27251f;
+    --ink: #f4f2ea;
+    --mut: #a6a195;
+    --ln: #3a3830;
+    --fill: #292721;
+    --acc: #f0b53d;
+    --acc-2: #c98a00;
+    --acc-soft: rgba(240, 181, 61, 0.16);
+    --bad: #ff8d84;
+    --ok: #81c995;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 1px rgba(0, 0, 0, 0.24);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #171715;
-  --card: #232321;
-  --ink: #eeede8;
-  --mut: #9a988f;
-  --ln: #45443f;
-  --fill: #302f2c;
-  --acc: #e0a91f;
-  --bad: #f2857e;
-  --ok: #7bc47f;
+  --bg: #14140f;
+  --card: #201f1a;
+  --card-2: #27251f;
+  --ink: #f4f2ea;
+  --mut: #a6a195;
+  --ln: #3a3830;
+  --fill: #292721;
+  --acc: #f0b53d;
+  --acc-2: #c98a00;
+  --acc-soft: rgba(240, 181, 61, 0.16);
+  --bad: #ff8d84;
+  --ok: #81c995;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 1px rgba(0, 0, 0, 0.24);
 }
 
 html {
@@ -53,7 +72,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.45;
   font-size: 14px;
 }
@@ -181,12 +200,12 @@ h2 {
 .card-box {
   background: var(--card);
   border: 1px solid var(--ln);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-card);
 }
 
 .text-mut {
@@ -246,6 +265,12 @@ h2 {
   padding: 2px 10px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.badge-pill.status-open {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+  color: var(--acc);
 }
 
 .btn-batch-toggle {
@@ -321,6 +346,14 @@ h2 {
   border-bottom: 2px solid var(--card);
   margin-bottom: -1px;
   background: var(--card);
+  box-shadow: inset 0 -2px 0 0 var(--acc);
+}
+
+.live-count-chip {
+  color: var(--acc);
+  background: var(--acc-soft);
+  padding: 1px 7px;
+  border-radius: 6px;
 }
 
 .table-wrap {
@@ -354,6 +387,17 @@ tr.clickable-row {
 
 tr.clickable-row:hover {
   background: var(--fill);
+}
+
+/* Left-edge status stripe: scan open vs. closed batches without reading the badge.
+   box-shadow (not border) so it's immune to table border-collapse quirks and
+   layers cleanly over the :hover background. */
+tr.clickable-row[data-status="Open"] td:first-child {
+  box-shadow: inset 4px 0 0 0 var(--acc);
+}
+
+tr.clickable-row[data-status="Closed"] td:first-child {
+  box-shadow: inset 3px 0 0 0 var(--ln);
 }
 
 .btn-icon {
@@ -396,7 +440,7 @@ input:focus, select:focus {
 .split-layout {
   display: flex;
   gap: 16px;
-  align-items: flex-start;
+  align-items: stretch;
 }
 
 .split-left {
@@ -412,12 +456,25 @@ input:focus, select:focus {
   flex: none;
   background: var(--card);
   border: 1px solid var(--ln);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-card);
+}
+
+.expense-panel {
+  background: var(--card-2);
+  border-top: 3px solid var(--acc);
+  position: sticky;
+  top: 16px;
+}
+
+.load-more-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
 }
 
 .flex-row {
@@ -551,7 +608,7 @@ svg rect.b:hover {
   gap: 14px;
   background: var(--card);
   border: 1px solid var(--ln);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -580,6 +637,167 @@ svg rect.b:hover {
   opacity: 1;
 }
 
+/* ---------------------------------------------------------------------- */
+/* Dashboard redesign                                                      */
+/* ---------------------------------------------------------------------- */
+
+@keyframes dashFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dash-animate {
+  animation: dashFadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--dash-delay, 0s);
+}
+
+.dash-section-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--mut);
+}
+
+/* Stat tile: dominant number, de-emphasized label */
+.stat-tile {
+  background: var(--card-2);
+  border: 1px solid var(--ln);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.stat-tile:hover {
+  border-color: var(--acc);
+  transform: translateY(-2px);
+}
+
+.stat-tile .stat-value {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  line-height: 1.15;
+}
+
+.stat-tile .stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mut);
+}
+
+.stat-tile.accent .stat-value {
+  color: var(--acc);
+}
+
+.stat-tile.danger .stat-value {
+  color: var(--bad);
+}
+
+/* Open batch cards: subtle yellow accent to tie into the theme */
+.dash-batch-card {
+  border-left: 3px solid var(--acc);
+}
+
+.dash-batch-toggle {
+  border-color: var(--acc);
+  color: var(--acc);
+}
+
+.dash-batch-toggle:hover {
+  background: var(--acc);
+  color: var(--card);
+  border-color: var(--acc);
+}
+
+/* Warnings panel */
+.dash-warnings-panel {
+  background: var(--card);
+  border: 1px solid var(--ln);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow-card);
+}
+
+.dash-warnings-panel.has-alert {
+  border-color: var(--bad);
+  box-shadow: 0 0 0 1px rgba(179, 38, 30, 0.12), var(--shadow-card);
+}
+
+.dash-warning-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Charts */
+.dash-charts-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 14px;
+}
+
+.dash-chart-card {
+  min-width: 0;
+}
+
+.dash-chart-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chart-canvas-wrap {
+  position: relative;
+  height: 220px;
+  width: 100%;
+}
+
+.stat-mini-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.stat-tile-mini {
+  background: var(--card-2);
+  border: 1px solid var(--ln);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-tile-mini .stat-mini-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mut);
+}
+
+.stat-tile-mini .stat-mini-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
 @media (max-width: 1040px) {
   .split-layout {
     flex-direction: column;
@@ -587,7 +805,13 @@ svg rect.b:hover {
   .side-panel {
     width: 100%;
   }
+  .expense-panel {
+    position: static;
+  }
   .dashboard-split {
+    grid-template-columns: 1fr;
+  }
+  .dash-charts-grid {
     grid-template-columns: 1fr;
   }
 }
