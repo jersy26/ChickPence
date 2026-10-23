@@ -487,12 +487,7 @@ export function renderBatches(
         <div style="font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.05em;">
           Farm Expenses
         </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;">
-          <button class="btn-action" data-panel-tab="Expenses">+ Expense</button>
-          <button class="btn-action" data-panel-tab="Feed">+ Feed Log</button>
-          <button class="btn-action" data-panel-tab="Mortality">+ Mortality</button>
-          <button class="btn-action" data-panel-tab="Sales">+ Sale</button>
-        </div>
+        <button class="btn-action primary" data-panel-tab="Expenses" id="btn-open-entry-modal">+ Add New Log</button>
       </div>
       <div class="card-box table-wrap">
         <table>
