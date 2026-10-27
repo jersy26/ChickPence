@@ -7,8 +7,9 @@ import { renderShell, attachShellListeners } from './ui/shell.js';
 import { renderLogin, attachLoginListeners } from './ui/loginView.js';
 import { renderDashboard, attachDashboardListeners } from './ui/dashboardView.js';
 import { renderBatches, attachBatchesListeners } from './ui/batchesView.js';
-import { renderHistory, attachHistoryListeners, filterHistoryBatches } from './ui/historyView.js';
+import { renderHistory, attachHistoryListeners } from './ui/historyView.js';
 import { exportBatch, exportBatchList } from './services/exportService.js';
+import { openExportModal } from './ui/exportMenu.js';
 import { renderSummary, attachSummaryListeners } from './ui/summaryView.js';
 import { computeAllocationsForExpense } from './services/allocationEngine.js';
 import { db } from './db/dexie.js';
@@ -246,10 +247,7 @@ async function render() {
       if (search !== null) state.historySearch = search;
       if (status !== null) state.historyStatus = status;
       render();
-    }, (format) => exportBatchList(
-      filterHistoryBatches(batchesWithFullData, state.historySearch, state.historyStatus),
-      format
-    ));
+    }, () => openExport(allBatches));
 
   } else if (state.view === 'summary') {
     const batchId = state.selectedBatchId;
@@ -258,16 +256,33 @@ async function render() {
     contentHtml = renderSummary(batchData);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render);
-    attachSummaryListeners(appContainer, navigate, batchData?.batch ? async (format) => {
-      const expensesById = await Repository.getExpensesByIds(batchData.allocations.map((a) => a.expense_id));
-      return exportBatch(batchData, expensesById, format);
-    } : null);
+    attachSummaryListeners(appContainer, navigate, batchData?.batch
+      ? async () => openExport(await Repository.getAllBatches(), batchId)
+      : null);
   }
 
   updateSyncIndicator();
 }
 
 /** Load all open batches with their full details */
+/** Export modal: detailed report of one batch, or the whole history. */
+function openExport(allBatches, defaultBatchId = null) {
+  openExportModal({
+    batches: allBatches,
+    defaultBatchId,
+    onExport: async ({ scope, batchId, format }) => {
+      if (scope === 'history') {
+        const all = await Promise.all(allBatches.map((b) => Repository.getBatchFullDetails(b.batch_id)));
+        return exportBatchList(all.filter(Boolean), format);
+      }
+      const batchData = await Repository.getBatchFullDetails(batchId);
+      if (!batchData) throw new Error('Batch not found');
+      const expensesById = await Repository.getExpensesByIds(batchData.allocations.map((a) => a.expense_id));
+      return exportBatch(batchData, expensesById, format);
+    }
+  });
+}
+
 async function loadOpenBatchesData() {
   const openBatches = await Repository.getOpenBatches();
   const results = [];

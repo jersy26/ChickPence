@@ -8,7 +8,7 @@ import {
   sumField
 } from '../services/calculations.js';
 import { calcBatchMetrics } from '../services/allocationEngine.js';
-import { renderExportButtons, attachExportListeners } from './exportMenu.js';
+import { renderExportButton, attachExportButton } from './exportMenu.js';
 
 const NA = 'N/A';
 
@@ -88,7 +88,7 @@ export function renderSummary(batchData) {
 
     <div class="flex-row" style="justify-content: space-between; flex-wrap: wrap; gap: 8px;">
       ${provisionalNote}
-      ${renderExportButtons('summary')}
+      ${renderExportButton('summary')}
     </div>
 
     <div class="grid-4">
@@ -177,5 +177,5 @@ export function attachSummaryListeners(container, onNavigate, onExport) {
   container.querySelector('#btn-summary-back')?.addEventListener('click', () => {
     onNavigate('history');
   });
-  if (onExport) attachExportListeners(container, 'summary', onExport);
+  if (onExport) attachExportButton(container, 'summary', onExport);
 }
