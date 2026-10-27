@@ -30,6 +30,21 @@ function metricCell(val, formatter) {
   return formatter(val);
 }
 
+/** "Scan logbook" (photo → AI drafts) plus a "Review scanned" button when queued photos are done. */
+export function renderScanActions(importState) {
+  if (!importState) return '';
+  const { unavailableReason, queued = 0, ready = 0 } = importState;
+  const waiting = queued - ready;
+  return `
+    ${ready > 0 ? `<button class="btn-action accent" id="btn-review-scans">Review scanned (${ready})</button>` : ''}
+    <label class="btn-action scan-btn ${unavailableReason ? 'is-disabled' : ''}"
+           title="${unavailableReason || 'Take or pick a photo of the logbook; the AI drafts the entries for you to review'}">
+      📷 Scan logbook${waiting > 0 ? ` <span class="text-mut">(${waiting} waiting)</span>` : ''}
+      <input type="file" id="input-scan-logbook" accept="image/*" capture="environment" hidden ${unavailableReason ? 'disabled' : ''} />
+    </label>
+  `;
+}
+
 function renderBatchSelectorOptions(openBatches, selectedId) {
   return openBatches
     .map(
@@ -392,7 +407,8 @@ export function renderBatches(
   editingItem,
   expensePreview,
   collapsedBatchIds = new Set(),
-  expenseVisibleCount = EXPENSE_PAGE_SIZE
+  expenseVisibleCount = EXPENSE_PAGE_SIZE,
+  importState = null // { unavailableReason, queued, ready } for the "Scan logbook" action
 ) {
   const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -499,7 +515,10 @@ export function renderBatches(
         <div style="font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.05em;">
           Farm Expenses
         </div>
-        <button class="btn-action primary" data-panel-tab="Expenses" id="btn-open-entry-modal">+ Add New Log</button>
+        <div class="import-actions">
+          ${renderScanActions(importState)}
+          <button class="btn-action primary" data-panel-tab="Expenses" id="btn-open-entry-modal">+ Add New Log</button>
+        </div>
       </div>
       <div class="card-box table-wrap">
         <table>
@@ -523,7 +542,19 @@ export function renderBatches(
 // ---------------------------------------------------------------------------
 
 export function attachBatchesListeners(container, state, callbacks) {
-  const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview, onLoadMoreExpenses } = callbacks;
+  const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview, onLoadMoreExpenses, onScanPhoto, onReviewScans } = callbacks;
+
+  // Scan logbook: the file input sits inside the button label
+  container.querySelector('.scan-btn.is-disabled')?.addEventListener('click', (e) => {
+    showToast(e.currentTarget.getAttribute('title'), 4000); // no hover tooltip on phones
+  });
+  const scanInput = container.querySelector('#input-scan-logbook');
+  scanInput?.addEventListener('change', () => {
+    const file = scanInput.files?.[0];
+    scanInput.value = ''; // allow picking the same photo again
+    if (file) onScanPhoto?.(file);
+  });
+  container.querySelector('#btn-review-scans')?.addEventListener('click', () => onReviewScans?.());
 
   container.querySelector('#btn-load-more-expenses')?.addEventListener('click', () => {
     onLoadMoreExpenses?.();

@@ -14,6 +14,19 @@ import { renderSummary, attachSummaryListeners } from './ui/summaryView.js';
 import { computeAllocationsForExpense } from './services/allocationEngine.js';
 import { db } from './db/dexie.js';
 import { showToast } from './ui/toast.js';
+import { openImportReviewModal } from './ui/importReviewModal.js';
+import {
+  aiUnavailableReason,
+  resizeImage,
+  parseImage,
+  normalizeDrafts,
+  queueImageJob,
+  getReadyJobs,
+  countPendingJobs,
+  deleteJob,
+  retryJob,
+  processQueuedJobs
+} from './services/aiParseService.js';
 
 function getInitialCollapsedBatchIds() {
   try {
@@ -64,12 +77,15 @@ async function initApp() {
   // 3. Sync engine subscription
   state.syncStatus = await syncEngine.getSyncStatus();
   syncEngine.subscribe((newStatus) => {
+    const cameOnline = newStatus.online && !state.syncStatus.online;
     state.syncStatus = newStatus;
     updateSyncIndicator();
+    if (cameOnline && AuthService.isLoggedIn()) processQueue(); // scan photos taken offline
   });
 
   if (syncEngine.isOnline()) {
     syncEngine.syncNow();
+    if (AuthService.isLoggedIn()) processQueue();
   }
 
   // 4. Initial render
@@ -148,7 +164,8 @@ async function render() {
       state.editingItem,
       state.expensePreview,
       state.collapsedBatchIds,
-      state.expenseVisibleCount
+      state.expenseVisibleCount,
+      await loadImportState()
     );
 
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
@@ -228,7 +245,9 @@ async function render() {
         onLoadMoreExpenses: () => {
           state.expenseVisibleCount += 15;
           render();
-        }
+        },
+        onScanPhoto: (file) => scanLogbookPhoto(file, openBatchesData.map((d) => d.batch)),
+        onReviewScans: () => reviewNextScan(openBatchesData.map((d) => d.batch))
       }
     );
 
@@ -281,6 +300,94 @@ function openExport(allBatches, defaultBatchId = null) {
       return exportBatch(batchData, expensesById, format);
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Logbook scanning (AI drafts → review modal → Repository.save*)
+// ---------------------------------------------------------------------------
+
+async function loadImportState() {
+  const [queued, ready] = await Promise.all([countPendingJobs(), getReadyJobs()]);
+  return { unavailableReason: aiUnavailableReason(), queued, ready: ready.length };
+}
+
+async function scanLogbookPhoto(file, openBatches) {
+  const reason = aiUnavailableReason();
+  if (reason) return showToast(reason, 4000);
+
+  let image;
+  try {
+    image = await resizeImage(file);
+  } catch (err) {
+    console.error('Could not read photo', err);
+    return showToast('Could not read that photo. Try a JPEG or PNG.');
+  }
+
+  if (!syncEngine.isOnline()) {
+    await queueImageJob(image);
+    showToast('Offline · photo saved. It will be scanned when you are back online.', 4000);
+    return render();
+  }
+
+  showToast('Reading the logbook…', 60000);
+  try {
+    const result = await parseImage(image, openBatches.map((b) => b.batch_name));
+    showToast('Logbook read', 1200);
+    openReview(result, openBatches);
+  } catch (err) {
+    console.error('ai-parse failed', err);
+    // Keep the photo so the user does not have to retake it
+    await queueImageJob(image, { error: err.message });
+    showToast(`Scan failed: ${err.message} The photo was kept; retry from "Review scanned".`, 5000);
+    render();
+  }
+}
+
+function openReview(result, openBatches, { onSaved, onDiscard } = {}) {
+  openImportReviewModal({
+    drafts: normalizeDrafts(result?.entries, openBatches),
+    openBatches,
+    notes: result?.notes || '',
+    onSaved: async (count) => {
+      await onSaved?.(count);
+      render();
+    },
+    onDiscard: async () => {
+      await onDiscard?.();
+      render();
+    }
+  });
+}
+
+async function reviewNextScan(openBatches) {
+  const [job] = await getReadyJobs();
+  if (!job) return render();
+
+  if (job.status === 'failed') {
+    if (confirm(`This photo could not be scanned (${job.error}). Try again? Cancel deletes the photo.`)) {
+      await retryJob(job.id);
+      showToast('Retrying…');
+      await processQueue();
+    } else {
+      await deleteJob(job.id);
+    }
+    return render();
+  }
+
+  // The job is removed once the user saves or discards its drafts
+  openReview(job.result, openBatches, {
+    onSaved: () => deleteJob(job.id),
+    onDiscard: () => deleteJob(job.id)
+  });
+}
+
+async function processQueue() {
+  const openBatches = await Repository.getOpenBatches();
+  const finished = await processQueuedJobs(openBatches.map((b) => b.batch_name));
+  if (finished) {
+    showToast(`${finished} scanned ${finished === 1 ? 'photo is' : 'photos are'} ready to review (Batches page).`, 4000);
+    if (state.view === 'batches') render();
+  }
 }
 
 async function loadOpenBatchesData() {

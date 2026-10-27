@@ -112,6 +112,14 @@ export class ChickPenceDatabase extends Dexie {
           }
         });
       });
+
+    // v4 – import_jobs: logbook photos waiting for (or done with) AI parsing.
+    //      Local only, never synced: the photo stays on the device and the
+    //      drafts only become real records once the user confirms them.
+    //      Dexie keeps every table from v3; only the new one is listed.
+    this.version(4).stores({
+      import_jobs: '++id, status, created_at'
+    });
   }
 }
 
