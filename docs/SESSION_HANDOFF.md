@@ -1,7 +1,7 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-28
-**Branch:** `main` (Phase 2 merged at `fdf678a`; the switch to a local LLM is not committed yet)
+**Branch:** `main` (pushed, in sync with `origin/main`; local LLM switch merged at `6a77785`)
 **Tests:** 87 passing (`npm test`)
 
 ---
@@ -136,10 +136,12 @@ Then open **⚙** next to Scan logbook → **Test connection** → pick the mode
 
 ### Commits (on `main`)
 ```
+6a77785 Merge branch 'feature/local-llm' into main
+4020140 feat(ai): scan logbooks with a local LLM (Ollama) instead of Claude
 fdf678a Merge branch 'feature/ai-parse' into main
 5df8893 feat(ai): scan logbook photos into reviewable draft entries
 ```
-The switch from the Claude Edge Function to the local LLM is **not committed yet**. Local branch `feature/ai-parse` still exists (not pushed; already merged).
+Local branches `feature/ai-parse` and `feature/local-llm` still exist (not pushed; already merged).
 
 ---
 
