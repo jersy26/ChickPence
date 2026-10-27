@@ -12,7 +12,7 @@ export default defineConfig({
         name: 'ChickPence: Poultry Cost & Profitability',
         short_name: 'ChickPence',
         description: 'Batch-Centric Relational Database System for Poultry Cost and Profitability Analysis',
-        theme_color: '#1f1f1c',
+        theme_color: '#f7f7f4',
         background_color: '#f4f3ef',
         display: 'standalone',
         start_url: '/',
