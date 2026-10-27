@@ -1,16 +1,15 @@
 /**
  * aiParseService.js
- * Client side of the `ai-parse` Edge Function: photo resizing, the call itself,
- * turning raw AI output into reviewable drafts, and the offline photo queue.
+ * Logbook scanning with the local AI (see localLlm.js): photo resizing,
+ * turning raw output into reviewable drafts, and the queue of photos waiting
+ * for the local AI.
  *
  * AI never writes records. Everything here produces drafts; the review modal
  * saves confirmed drafts through Repository.save* like the manual form does.
  */
 
 import { db } from '../db/dexie.js';
-import { getSupabase, isSupabaseConfigured } from './supabaseClient.js';
-import { AuthService } from './auth.js';
-import { syncEngine } from './syncEngine.js';
+import { checkLocalLlm, transcribeImage, extractEntries } from './localLlm.js';
 
 export const DRAFT_TYPES = ['expense', 'feed', 'mortality', 'sale'];
 export const LOW_CONFIDENCE = 0.7;
@@ -30,17 +29,11 @@ export function localToday(d = new Date()) {
 }
 
 /**
- * Why AI import is unavailable right now, or null when it can run.
- * Offline is not a blocker for photos (they queue), so it is reported separately.
+ * Why the local AI cannot scan right now (Ollama not running, model missing),
+ * or null when it can. Photos can still be taken; they wait in the queue.
  */
-export function aiUnavailableReason() {
-  if (!isSupabaseConfigured()) return 'AI import needs a Supabase connection (not available in Demo Mode).';
-  if (AuthService.getUser()?.isDemo) return 'AI import needs a signed-in Supabase account (not available in Demo Mode).';
-  return null;
-}
-
-export function isAiOnline() {
-  return aiUnavailableReason() === null && syncEngine.isOnline();
+export async function aiUnavailableReason(opts) {
+  return (await checkLocalLlm(opts)).reason;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +66,11 @@ export function normalizeDrafts(entries, openBatches) {
   return (Array.isArray(entries) ? entries : [])
     .filter((e) => e && DRAFT_TYPES.includes(e.type))
     .map((e, i) => {
-      const uncertain = new Set(Array.isArray(e.uncertain_fields) ? e.uncertain_fields : []);
+      // Small models sometimes flag every field; keep only fields this type uses
+      const relevant = new Set(['date', ...REQUIRED_FIELDS[e.type], ...(e.type === 'expense' ? ['feed_amount', 'other_amount'] : [])]);
+      const uncertain = new Set((Array.isArray(e.uncertain_fields) ? e.uncertain_fields : [])
+        .map((f) => (f === 'batch_hint' ? 'batch_id' : f))
+        .filter((f) => relevant.has(f)));
       const confidence = Math.min(1, Math.max(0, toNumber(e.confidence) ?? 0));
 
       const draft = {
@@ -163,7 +160,7 @@ export function draftToSave(d) {
 }
 
 // ---------------------------------------------------------------------------
-// PHOTO + EDGE FUNCTION (browser)
+// PHOTO + LOCAL AI (browser)
 // ---------------------------------------------------------------------------
 
 /** Downscale a photo to ≤1600px on the long side and return base64 JPEG (no data: prefix). */
@@ -178,28 +175,22 @@ export async function resizeImage(file, maxSide = MAX_IMAGE_SIDE) {
   return canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
 }
 
-async function invokeAiParse(body) {
-  const supabase = getSupabase();
-  if (!supabase) throw new Error('Supabase is not configured');
-  const { data, error } = await supabase.functions.invoke('ai-parse', { body });
-  if (error) {
-    // FunctionsHttpError carries the function's JSON error message in .context
-    let message = error.message;
-    try {
-      const payload = await error.context?.json?.();
-      if (payload?.error) message = payload.error;
-    } catch (_) {}
-    throw new Error(message);
-  }
-  return data; // { entries, notes }
+/**
+ * Photo → { entries, notes, transcript }.
+ * onProgress(message) reports each step; signal cancels.
+ */
+export async function parseImage(imageBase64, batchNames, { signal, onProgress } = {}) {
+  onProgress?.('Reading the photo with the local AI…');
+  const transcript = await transcribeImage(imageBase64, { signal });
+  onProgress?.('Sorting the lines into entries…');
+  const result = await extractEntries(transcript, { today: localToday(), batches: batchNames, signal, onProgress });
+  return { entries: result.entries, notes: result.notes, transcript };
 }
 
-export function parseImage(imageBase64, batchNames) {
-  return invokeAiParse({ mode: 'image', image: imageBase64, media_type: 'image/jpeg', today: localToday(), batches: batchNames });
-}
-
-export function parseText(text, batchNames) {
-  return invokeAiParse({ mode: 'text', text, today: localToday(), batches: batchNames });
+/** Transcript (voice input, Phase 3) → { entries, notes }. */
+export async function parseText(text, batchNames, { signal, onProgress } = {}) {
+  const result = await extractEntries(text, { today: localToday(), batches: batchNames, signal, onProgress });
+  return { entries: result.entries, notes: result.notes };
 }
 
 // ---------------------------------------------------------------------------
@@ -237,17 +228,17 @@ export async function deleteJob(id) {
 let processing = false;
 
 /**
- * Send queued photos to ai-parse. Results stay in the job until the user
- * reviews them. Returns how many jobs finished (ready or failed).
+ * Scan queued photos with the local AI. Results stay in the job until the
+ * user reviews them. Returns how many jobs finished (ready or failed).
  */
 export async function processQueuedJobs(batchNames) {
-  if (processing || !isAiOnline()) return 0;
+  if (processing) return 0;
   processing = true;
   let finished = 0;
   try {
     const queued = await db.import_jobs.where('status').equals('queued').sortBy('created_at');
     for (const job of queued) {
-      if (!syncEngine.isOnline()) break;
+      if (await aiUnavailableReason({ force: true })) break;
       try {
         const result = await parseImage(job.image, batchNames);
         await db.import_jobs.update(job.id, { status: 'ready', result, image: null });

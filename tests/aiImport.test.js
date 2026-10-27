@@ -47,6 +47,11 @@ describe('normalizeDrafts', () => {
     expect(d.uncertain.has('price_per_kg')).toBe(false);
   });
 
+  it('ignores uncertain flags on fields the type does not use', () => {
+    const [d] = normalizeDrafts([{ ...base, type: 'mortality', count: 2, batch_hint: 'Batch 2026-08', uncertain_fields: ['buyer_name', 'weight_kg', 'count'] }], openBatches);
+    expect([...d.uncertain]).toEqual(['count']);
+  });
+
   it('drops unknown types and invalid dates', () => {
     const drafts = normalizeDrafts([{ ...base, type: 'vaccine' }, { ...base, type: 'expense', other_amount: 500, date: '27/10' }], openBatches);
     expect(drafts).toHaveLength(1);
@@ -127,11 +132,14 @@ describe('Import review modal', () => {
 });
 
 describe('Scan logbook action', () => {
-  it('is disabled with the reason in Demo Mode', () => {
-    const html = renderScanActions({ unavailableReason: 'Needs Supabase', queued: 0, ready: 0 });
-    expect(html).toContain('is-disabled');
-    expect(html).toContain('title="Needs Supabase"');
+  it('stays usable when the local AI is off, and says so', () => {
+    const html = renderScanActions({ unavailableReason: 'Local AI (Ollama) is not running.', queued: 0, ready: 0 });
+    expect(html).toContain('is-warn');
+    expect(html).toContain('AI off');
+    expect(html).toContain('scanned later');
+    expect(html).not.toMatch(/<input[^>]*disabled/);
     expect(html).not.toContain('btn-review-scans');
+    expect(html).toContain('id="btn-ai-settings"');
   });
 
   it('shows waiting and ready scans', () => {

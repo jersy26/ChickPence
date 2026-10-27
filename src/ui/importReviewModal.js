@@ -109,6 +109,48 @@ export function renderImportReviewModal(drafts, openBatches, notes = '', errors 
   `;
 }
 
+/**
+ * Progress while the local AI reads a photo (can take minutes on a CPU-only PC).
+ * Returns { update(message), close() }.
+ */
+export function openScanProgressModal({ onCancel }) {
+  openModal(`
+    <h2>Scanning the logbook</h2>
+    <div class="scan-progress">
+      <div class="scan-spinner" aria-hidden="true"></div>
+      <div>
+        <div id="scan-progress-step">Starting…</div>
+        <div class="text-mut" id="scan-progress-time">0:00</div>
+      </div>
+    </div>
+    <div class="text-mut import-disclaimer">This runs on this computer and can take a few minutes. You can keep the app open while it works.</div>
+    <div class="flex-row" style="justify-content:flex-end;">
+      <button class="btn-action" id="btn-cancel-scan">Cancel</button>
+    </div>
+  `);
+  const root = document.getElementById('modal');
+  // Clicking outside must not hide a scan that is still running
+  root.querySelector('.modal-backdrop')?.replaceWith(root.querySelector('.modal-backdrop').cloneNode(true));
+  const started = Date.now();
+  const timer = setInterval(() => {
+    const s = Math.floor((Date.now() - started) / 1000);
+    const el = root.querySelector('#scan-progress-time');
+    if (el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }, 1000);
+  root.querySelector('#btn-cancel-scan').addEventListener('click', () => onCancel?.());
+
+  return {
+    update(message) {
+      const el = root.querySelector('#scan-progress-step');
+      if (el) el.textContent = message;
+    },
+    close() {
+      clearInterval(timer);
+      closeModal();
+    }
+  };
+}
+
 function readValue(el) {
   const name = el.dataset.field;
   if (name === 'include') return el.checked;
