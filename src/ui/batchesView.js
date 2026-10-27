@@ -157,8 +157,11 @@ function renderExpenseTable(expenses, allAllocations) {
 }
 
 // ---------------------------------------------------------------------------
-// ENTRY FORM PANEL
+// ENTRY FORM (modal content — no side-panel wrapper)
 // ---------------------------------------------------------------------------
+
+// Module-level flag: keep modal open across re-renders triggered by tab switches
+let _batchModalOpen = false;
 
 function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview) {
   const val = (field, fallback = '') => (editingItem ? (editingItem[field] ?? fallback) : fallback);
@@ -182,26 +185,25 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
     }
 
     return `
-      <div class="side-panel expense-panel">
-        <div style="font-weight:600;margin-bottom:6px;">${editingItem ? 'Edit Expense' : 'New Farm Expense'}</div>
-        ${editingItem ? `<div class="ok-line flex-row"><span>Editing Entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
-        <label class="form-field">
-          Date
-          <input id="input-exp-date" type="date" value="${val('entry_date', TODAY)}" />
-        </label>
-        <label class="form-field">
-          Feed Amount (₱)
-          <input id="input-exp-feed" type="number" min="0" step="0.01" placeholder="0.00" value="${feedVal}" />
-        </label>
-        <label class="form-field">
-          Other Costs (₱)
-          <input id="input-exp-other" type="number" min="0" step="0.01" placeholder="0.00" value="${otherVal}" />
-        </label>
-        ${previewHtml}
-        <button class="btn-action" id="btn-preview-expense" style="margin-top:4px;">
+      ${editingItem ? `<div class="ok-line flex-row" style="margin-bottom:6px;"><span class="text-mut">Editing entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
+      <label class="form-field">
+        Date
+        <input id="input-exp-date" type="date" value="${val('entry_date', TODAY)}" />
+      </label>
+      <label class="form-field">
+        Feed Amount (₱)
+        <input id="input-exp-feed" type="number" min="0" step="0.01" placeholder="0.00" value="${feedVal}" />
+      </label>
+      <label class="form-field">
+        Other Costs (₱)
+        <input id="input-exp-other" type="number" min="0" step="0.01" placeholder="0.00" value="${otherVal}" />
+      </label>
+      ${previewHtml}
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn-action" id="btn-preview-expense" style="flex:1;">
           ${expensePreview ? 'Refresh Preview' : 'Preview Allocation'}
         </button>
-        <button class="btn-action accent" id="btn-save-expense" style="margin-top:4px;" ${!expensePreview ? 'disabled' : ''}>
+        <button class="btn-action accent" id="btn-save-expense" style="flex:1;" ${!expensePreview ? 'disabled' : ''}>
           ${editingItem ? 'Save Changes' : 'Save Expense'}
         </button>
       </div>`;
@@ -218,48 +220,42 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
 
   if (activeTab === 'Feed') {
     return `
-      <div class="side-panel">
-        <div style="font-weight:600;margin-bottom:6px;">${editingItem ? 'Edit Feed Log' : 'New Feed Log'}</div>
-        ${editingItem ? `<div class="ok-line flex-row"><span>Editing Entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
-        ${batchSelector}
-        <label class="form-field">
-          Date
-          <input id="input-feed-date" type="date" value="${val('entry_date', TODAY)}" />
-        </label>
-        <label class="form-field">
-          Quantity Consumed (kg)
-          <input id="input-feed-kg" type="number" min="0.001" step="any" placeholder="0.000" value="${
-            editingItem
-              ? (editingItem.quantity_g !== undefined
-                  ? ((Number(editingItem.quantity_g) || 0) / 1000).toFixed(3)
-                  : (Number(editingItem.quantity_kg) || 0))
-              : ''
-          }" />
-        </label>
-        <button class="btn-action primary" id="btn-save-entry" style="margin-top:4px;">
-          ${editingItem ? 'Save Changes' : 'Save Entry'}
-        </button>
-      </div>`;
+      ${editingItem ? `<div class="ok-line flex-row" style="margin-bottom:6px;"><span class="text-mut">Editing entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
+      ${batchSelector}
+      <label class="form-field">
+        Date
+        <input id="input-feed-date" type="date" value="${val('entry_date', TODAY)}" />
+      </label>
+      <label class="form-field">
+        Quantity Consumed (kg)
+        <input id="input-feed-kg" type="number" min="0.001" step="any" placeholder="0.000" value="${
+          editingItem
+            ? (editingItem.quantity_g !== undefined
+                ? ((Number(editingItem.quantity_g) || 0) / 1000).toFixed(3)
+                : (Number(editingItem.quantity_kg) || 0))
+            : ''
+        }" />
+      </label>
+      <button class="btn-action primary" id="btn-save-entry" style="margin-top:8px;">
+        ${editingItem ? 'Save Changes' : 'Save Entry'}
+      </button>`;
   }
 
   if (activeTab === 'Mortality') {
     return `
-      <div class="side-panel">
-        <div style="font-weight:600;margin-bottom:6px;">${editingItem ? 'Edit Mortality' : 'New Mortality Log'}</div>
-        ${editingItem ? `<div class="ok-line flex-row"><span>Editing Entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
-        ${batchSelector}
-        <label class="form-field">
-          Date
-          <input id="input-mort-date" type="date" value="${val('entry_date', TODAY)}" />
-        </label>
-        <label class="form-field">
-          Number of Deaths
-          <input id="input-mort-deaths" type="number" min="0" step="1" placeholder="0" value="${val('count', '')}" />
-        </label>
-        <button class="btn-action primary" id="btn-save-entry" style="margin-top:4px;">
-          ${editingItem ? 'Save Changes' : 'Save Entry'}
-        </button>
-      </div>`;
+      ${editingItem ? `<div class="ok-line flex-row" style="margin-bottom:6px;"><span class="text-mut">Editing entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
+      ${batchSelector}
+      <label class="form-field">
+        Date
+        <input id="input-mort-date" type="date" value="${val('entry_date', TODAY)}" />
+      </label>
+      <label class="form-field">
+        Number of Deaths
+        <input id="input-mort-deaths" type="number" min="0" step="1" placeholder="0" value="${val('count', '')}" />
+      </label>
+      <button class="btn-action primary" id="btn-save-entry" style="margin-top:8px;">
+        ${editingItem ? 'Save Changes' : 'Save Entry'}
+      </button>`;
   }
 
   // Sales
@@ -268,38 +264,35 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
   const initialTotal = +(kg * ppk).toFixed(2);
 
   return `
-    <div class="side-panel">
-      <div style="font-weight:600;margin-bottom:6px;">${editingItem ? 'Edit Sale' : 'New Sale'}</div>
-      ${editingItem ? `<div class="ok-line flex-row"><span>Editing Entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
-      ${batchSelector}
-      <label class="form-field">
-        Sale Date
-        <input id="input-sale-date" type="date" value="${val('sale_date', TODAY)}" />
-      </label>
-      <label class="form-field">
-        Buyer Name
-        <input id="input-sale-buyer" type="text" placeholder="e.g. Buyer (placeholder)" value="${val('buyer_name', '')}" />
-      </label>
-      <label class="form-field">
-        Quantity Sold (heads)
-        <input id="input-sale-qty" type="number" min="1" step="1" placeholder="0" value="${val('quantity_sold', '')}" />
-      </label>
-      <label class="form-field">
-        Total Weight (kg)
-        <input id="input-sale-kg" type="number" min="0.01" step="any" placeholder="0.00" value="${val('weight_kg', '')}" />
-      </label>
-      <label class="form-field">
-        Price per kg (₱)
-        <input id="input-sale-ppk" type="number" min="0.01" step="any" placeholder="0.00" value="${val('price_per_kg', '')}" />
-      </label>
-      <div class="ok-line flex-row">
-        <span>Total Amount</span>
-        <b id="live-sale-total">${formatPeso(initialTotal)}</b>
-      </div>
-      <button class="btn-action primary" id="btn-save-entry" style="margin-top:4px;">
-        ${editingItem ? 'Save Changes' : 'Save Entry'}
-      </button>
-    </div>`;
+    ${editingItem ? `<div class="ok-line flex-row" style="margin-bottom:6px;"><span class="text-mut">Editing entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
+    ${batchSelector}
+    <label class="form-field">
+      Sale Date
+      <input id="input-sale-date" type="date" value="${val('sale_date', TODAY)}" />
+    </label>
+    <label class="form-field">
+      Buyer Name
+      <input id="input-sale-buyer" type="text" placeholder="e.g. Buyer (placeholder)" value="${val('buyer_name', '')}" />
+    </label>
+    <label class="form-field">
+      Quantity Sold (heads)
+      <input id="input-sale-qty" type="number" min="1" step="1" placeholder="0" value="${val('quantity_sold', '')}" />
+    </label>
+    <label class="form-field">
+      Total Weight (kg)
+      <input id="input-sale-kg" type="number" min="0.01" step="any" placeholder="0.00" value="${val('weight_kg', '')}" />
+    </label>
+    <label class="form-field">
+      Price per kg (₱)
+      <input id="input-sale-ppk" type="number" min="0.01" step="any" placeholder="0.00" value="${val('price_per_kg', '')}" />
+    </label>
+    <div class="ok-line flex-row" style="margin-top:4px;">
+      <span>Total Amount</span>
+      <b id="live-sale-total">${formatPeso(initialTotal)}</b>
+    </div>
+    <button class="btn-action primary" id="btn-save-entry" style="margin-top:8px;">
+      ${editingItem ? 'Save Changes' : 'Save Entry'}
+    </button>`;
 }
 
 export function renderBatchToggleIcon(isCollapsed) {
@@ -429,11 +422,30 @@ export function renderBatches(
         No open batches. Create one below.
       </div>`;
 
+  const modalTitle = activeTab === 'Expenses' ? 'Farm Expense'
+    : activeTab === 'Feed' ? 'Feed Log'
+    : activeTab === 'Mortality' ? 'Mortality Log'
+    : 'Sale';
+
   const tabButtons = ['Expenses', 'Feed', 'Mortality', 'Sales'].map((t) => `
     <button class="${activeTab === t ? 'active' : ''}" data-panel-tab="${t}">${t}</button>
   `).join('');
 
   return `
+    <!-- ENTRY MODAL -->
+    <div id="entry-modal-backdrop" class="modal-backdrop" style="display:none;">
+      <div class="modal-card" style="max-width:480px;width:100%;gap:10px;">
+        <div class="flex-row">
+          <b style="font-size:15px;">${editingItem ? 'Edit' : 'New'} ${modalTitle}</b>
+          <button data-action="close-modal" class="btn-icon" style="font-size:22px;line-height:1;padding:0 4px;" title="Close">×</button>
+        </div>
+        <div class="tab-nav" style="margin: -4px -4px 4px;">
+          ${tabButtons}
+        </div>
+        ${renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview)}
+      </div>
+    </div>
+
     <div class="top-bar">
       <h1>Open Batches</h1>
       <button class="btn-action accent" id="btn-show-new-batch-form">+ New Batch</button>
@@ -481,33 +493,27 @@ export function renderBatches(
     </div>
     ${batchCardsHtml}
 
-    <!-- FARM-LEVEL EXPENSES + ENTRY PANEL -->
-    <div class="split-layout" style="margin-top: 14px;">
-      <div class="split-left">
-        <div style="font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.05em;margin-bottom:6px;">
+    <!-- FARM-LEVEL EXPENSES (full-width) -->
+    <div style="margin-top:20px;">
+      <div class="flex-row" style="margin-bottom:8px;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div style="font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.05em;">
           Farm Expenses
         </div>
-        <div class="card-box table-wrap">
-          <table>
-            <thead>
-              <tr><th>Date</th><th>Feed</th><th>Other Costs</th><th>Total</th><th style="width:80px;"></th></tr>
-            </thead>
-            <tbody>${expenseRows}</tbody>
-          </table>
-        </div>
-        ${remainingExpenseCount > 0 ? `
-          <div class="load-more-row">
-            <button class="btn-action" id="btn-load-more-expenses">Load More (${remainingExpenseCount} older)</button>
-          </div>
-        ` : ''}
+        <button class="btn-action primary" data-panel-tab="Expenses" id="btn-open-entry-modal">+ Add New Log</button>
       </div>
-
-      <div class="split-right">
-        <div class="tab-nav" style="margin: -4px -4px 4px;">
-          ${tabButtons}
-        </div>
-        ${renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview)}
+      <div class="card-box table-wrap">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Feed</th><th>Other Costs</th><th>Total</th><th style="width:80px;"></th></tr>
+          </thead>
+          <tbody>${expenseRows}</tbody>
+        </table>
       </div>
+      ${remainingExpenseCount > 0 ? `
+        <div class="load-more-row">
+          <button class="btn-action" id="btn-load-more-expenses">Load More (${remainingExpenseCount} older)</button>
+        </div>
+      ` : ''}
     </div>
   `;
 }
@@ -653,10 +659,26 @@ export function attachBatchesListeners(container, state, callbacks) {
     });
   });
 
-  // Panel tab buttons
+  // Helper: show / hide the entry modal
+  const getModal = () => container.querySelector('#entry-modal-backdrop');
+  const showModal = () => { const m = getModal(); if (m) m.style.display = 'flex'; };
+  const hideModal = () => { const m = getModal(); if (m) m.style.display = 'none'; };
+
+  // Auto-show modal when re-rendering in edit mode or after a tab-switch
+  if (_batchModalOpen || state.editingItem) showModal();
+
+  // Close modal button
+  container.querySelector('[data-action="close-modal"]')?.addEventListener('click', () => {
+    _batchModalOpen = false;
+    hideModal();
+    onCancelEdit();
+  });
+
+  // Panel tab buttons (inside modal tabs OR the "+ Add" action buttons)
   container.querySelectorAll('[data-panel-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const tab = btn.getAttribute('data-panel-tab');
+      _batchModalOpen = true;
       onTabChange(tab);
     });
   });
@@ -664,6 +686,7 @@ export function attachBatchesListeners(container, state, callbacks) {
   // Table row edit / delete
   container.querySelectorAll('[data-action="edit-row"]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      _batchModalOpen = false; // editingItem being set will auto-show modal
       onSetEdit(btn.getAttribute('data-table'), btn.getAttribute('data-id'));
     });
   });
@@ -678,17 +701,6 @@ export function attachBatchesListeners(container, state, callbacks) {
   });
 
   // Expense table
-  container.querySelectorAll('[data-action="edit-expense"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const expId = btn.getAttribute('data-id');
-      const exp = state.expenses.find((e) => e.expense_id === expId);
-      if (exp) {
-        onTabChange('Expenses');
-        onSetEdit('expenses', expId);
-      }
-    });
-  });
-
   container.querySelectorAll('[data-action="void-expense"]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (!confirm('Void this expense entry?')) return;
@@ -714,6 +726,15 @@ export function attachBatchesListeners(container, state, callbacks) {
   saleKg?.addEventListener('input', updateSaleTotal);
   salePpk?.addEventListener('input', updateSaleTotal);
 
+  // Table row edit / delete — editing an existing row also opens the modal
+  container.querySelectorAll('[data-action="edit-expense"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      _batchModalOpen = false; // editingItem being set will trigger auto-show
+      onTabChange('Expenses');
+      onSetEdit('expenses', btn.getAttribute('data-id'));
+    });
+  });
+
   // Expense preview
   container.querySelector('#btn-preview-expense')?.addEventListener('click', async () => {
     const date = container.querySelector('#input-exp-date')?.value;
@@ -738,6 +759,7 @@ export function attachBatchesListeners(container, state, callbacks) {
         other_amount: other
       });
       showToast(state.editingItem ? 'Expense updated' : 'Expense saved · queued for sync');
+      _batchModalOpen = false;
       onCancelEdit();
     } catch (err) {
       showToast(err.message || 'Failed to save expense');
@@ -797,6 +819,7 @@ export function attachBatchesListeners(container, state, callbacks) {
         }
 
         showToast(editing ? 'Entry updated · queued for sync' : 'Entry saved · queued for sync');
+        _batchModalOpen = false;
         onCancelEdit();
       } catch (err) {
         showToast(err.message || 'Failed to save entry');
