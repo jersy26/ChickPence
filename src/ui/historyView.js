@@ -6,9 +6,9 @@ import {
   formatPercent,
   formatDate
 } from '../services/calculations.js';
-import { renderExportButtons, attachExportListeners } from './exportMenu.js';
+import { renderExportButton, attachExportButton } from './exportMenu.js';
 
-/** Batches matching the History search box and status chip (also used for export). */
+/** Batches matching the History search box and status chip. */
 export function filterHistoryBatches(batchesWithFullData, searchQuery = '', statusFilter = 'All') {
   const query = searchQuery.trim().toLowerCase();
 
@@ -73,7 +73,7 @@ export function renderHistory(batchesWithFullData, searchQuery = '', statusFilte
   return `
     <div class="top-bar">
       <h1>Batch History</h1>
-      ${filteredBatches.length ? renderExportButtons('history') : ''}
+      ${batchesWithFullData.length ? renderExportButton('history') : ''}
     </div>
 
     <div class="flex-row" style="flex-wrap: wrap; gap: 12px;">
@@ -112,7 +112,7 @@ export function renderHistory(batchesWithFullData, searchQuery = '', statusFilte
 }
 
 export function attachHistoryListeners(container, onNavigate, onFilterChange, onExport) {
-  if (onExport) attachExportListeners(container, 'history', onExport);
+  if (onExport) attachExportButton(container, 'history', onExport);
 
   const searchInput = container.querySelector('#history-search-input');
   searchInput?.addEventListener('input', (e) => {
