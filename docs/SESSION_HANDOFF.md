@@ -1,8 +1,8 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-28
-**Branch:** `main` (pushed, in sync with `origin/main` at `03c1a7a`)
-**Tests:** 52 passing (`npm test`)
+**Branch:** `main` (pushed, in sync with `origin/main`; Phase 2 merged at `fdf678a`)
+**Tests:** 70 passing (`npm test`)
 
 ---
 
@@ -13,8 +13,8 @@ ChickPence is mainly a reporting system, so we are adding four features:
 | Phase | Feature | Status |
 |---|---|---|
 | 1 | Export reports (Excel, PDF, CSV) | ✅ Done, merged, pushed |
-| 2 | `ai-parse` edge function + logbook photo OCR + draft review modal | ⏳ Next |
-| 3 | Voice input in the entry form | ⏳ Planned |
+| 2 | `ai-parse` edge function + logbook photo OCR + draft review modal | ✅ Done, merged, pushed (Edge Function **not deployed yet**) |
+| 3 | Voice input in the entry form | ⏳ Next |
 | 4 | AI suggestions (`ai-insights`) | ⏳ Planned |
 
 ### Architecture (agreed)
@@ -35,7 +35,7 @@ Manual form (existing "+ Add New Log") ─────────────�
 
 ---
 
-## 2. Done this session: Phase 1 export
+## 2. Done: Phase 1 export
 
 ### What the user sees
 - A single **⤓ Export** button on **History** and on every **Batch Summary** page opens a modal:
@@ -76,20 +76,54 @@ Local branches `feature/export-reports` and `feature/export-modal` still exist (
 
 ---
 
-## 3. Next: Phase 2 (ai-parse + photo OCR)
+## 3. Done: Phase 2 (ai-parse + photo OCR)
 
-1. **Supabase Edge Function** `supabase/functions/ai-parse` (Deno). It keeps the Claude API key server-side.
-   - Secret: `ANTHROPIC_API_KEY` (set with `supabase secrets set`).
-   - **Image mode:** the client resizes the photo to ~1600px and sends base64 → `claude-sonnet-5-5` vision.
-   - **Text mode** (reused by Phase 3): transcript → `claude-haiku-5-5`.
-   - Returns structured JSON drafts, e.g. `{ type: "sale"|"expense"|"feed"|"mortality", date, ...fields, confidence }`. Use structured output / tool schema so the output is always valid JSON.
-   - Check the claude-api skill for current SDK usage before writing it.
-2. **`src/ui/importReviewModal.js`:** editable draft rows, low-confidence fields highlighted, batch picker per row, confirm → `Repository.save*`.
-3. **Offline:** new Dexie table `import_jobs` (local only, not synced) holds queued photos and processes them when back online. This needs a **Dexie v4** schema bump in `src/db/dexie.js`.
-4. Entry point: a "Scan logbook" action next to "+ Add New Log".
-5. AI features must disable cleanly in Demo/offline mode (no Supabase configured).
+### What the user sees
+- A **📷 Scan logbook** button next to **+ Add New Log** on the Batches page. It opens the camera (or file picker), shrinks the photo, and sends it to `ai-parse`.
+- A **Review Scanned Entries** modal: one row per draft, every field editable, a confidence badge (red below 70%), and a "?" on fields the AI was unsure of or that are missing. Rows can be unticked. **Save selected** validates first, then saves through `Repository.save*`. If a save fails, only the failed rows stay in the modal, so nothing is saved twice.
+- **Offline:** the photo is stored and scanned automatically when the app comes back online; then a **Review scanned (N)** button appears. A failed scan keeps the photo so the user can retry or delete it.
+- **Demo Mode / no Supabase:** the button is greyed out; tapping it shows why (phones have no hover tooltip).
 
-## 4. Phase 3: voice input (decided with user)
+### Files
+| File | Role |
+|---|---|
+| `supabase/functions/ai-parse/index.ts` | Deno Edge Function. `mode: "image"` → `claude-sonnet-5-5` (effort `medium`, server-side refusal fallback `fallbacks: "default"`); `mode: "text"` → `claude-haiku-5-5` (effort `low`). Structured JSON output via `output_config.format` (json_schema). Returns `{ entries, notes }`; never touches the database |
+| `src/services/aiParseService.js` | `aiUnavailableReason`, `resizeImage`, `parseImage`, `parseText`; pure `normalizeDrafts`, `matchBatch`, `validateDraft`, `draftToSave`, `localToday`; offline queue (`queueImageJob`, `processQueuedJobs`, `getReadyJobs`, `retryJob`, `deleteJob`) |
+| `src/ui/importReviewModal.js` | `renderImportReviewModal` (pure), `openImportReviewModal`, `escapeHtml` |
+| `src/ui/batchesView.js` | `renderScanActions(importState)`; new `importState` argument on `renderBatches`; `onScanPhoto` / `onReviewScans` callbacks |
+| `src/main.js` | `scanLogbookPhoto`, `reviewNextScan`, `processQueue` (runs at start-up and whenever the app comes back online) |
+| `src/db/dexie.js` | **v4**: `import_jobs: '++id, status, created_at'` (local only, not synced) |
+| `src/style.css` | `.import-*`, `.scan-btn` styles |
+| `tests/aiImport.test.js` | 18 unit tests (normalization, validation, save mapping, HTML escaping, scan button states) |
+
+### Decisions and gotchas
+- **Forced `tool_choice` returns a 400 on `claude-sonnet-5-5`,** so the function uses structured output (`output_config.format`) instead of a forced tool. Every field is in the schema and unused ones are `null`.
+- **Expenses never get a batch.** They are farm-level and allocated by the existing engine. Feed, mortality and sale drafts get a batch from the AI's `batch_hint`, matched to open batch names; with only one open batch it is used automatically.
+- **Sacks of feed** are converted at 50 kg/sack and flagged as uncertain.
+- **AI text is HTML-escaped** before it goes into the modal (buyer names, source quotes, notes).
+- **"Today" is sent from the client in local time,** so "kahapon" resolves correctly before 8 AM PH time.
+- `import_jobs.status`: `queued` → `ready` (drafts stored, photo dropped) or `failed` (photo kept for retry). A job is deleted once its drafts are saved or discarded.
+- Requests need a signed-in Supabase user: Edge Functions verify the JWT by default, and `supabase.functions.invoke` sends it.
+- **Not yet run against Claude.** Deno and the Supabase CLI are not installed on the dev machine, so the function has not been type-checked or called. The review modal and save path were tested in Demo Mode with sample drafts.
+
+### Deploy (still to do)
+```bash
+supabase secrets set ANTHROPIC_API_KEY=your-key
+supabase functions deploy ai-parse
+```
+Then sign in with a real Supabase account (not Demo Mode), scan a logbook page, and check the drafts. Logs: Supabase dashboard → Edge Functions → `ai-parse`.
+
+### Commits (on `main`)
+```
+fdf678a Merge branch 'feature/ai-parse' into main
+5df8893 feat(ai): scan logbook photos into reviewable draft entries
+```
+Local branch `feature/ai-parse` still exists (not pushed; already merged).
+
+---
+
+## 4. Next: Phase 3 voice input (decided with user)
+- Reuse what Phase 2 built: `parseText(transcript, batchNames)` already calls `ai-parse` text mode, and `normalizeDrafts` / `validateDraft` turn the result into checked drafts.
 - A **mic button inside the existing "+ Add New Log" modal**, not a separate import screen.
 - Web Speech API (`fil-PH` / `en-PH`, Taglish) → show the transcript → `ai-parse` text mode → **prefill the form** → the user taps Save as usual (the existing form acts as the review step).
 - One entry per recording at first. Hide the mic when offline or unsupported (works in Chrome/Edge; limited on iOS Safari; not in Firefox).
@@ -103,7 +137,8 @@ Local branches `feature/export-reports` and `feature/export-modal` still exist (
 ---
 
 ## 6. Environment notes
-- Dev server: `.claude/launch.json` → `npm run dev` (port 3000, falls back to 3001). `.claude/` is untracked on purpose.
-- **Demo Mode** on the login screen seeds 8 realistic batches locally (no credentials needed); use it to test exports.
+- Dev server: `.claude/launch.json` → `npm run dev` (port 3000, falls back to the next free port). `.claude/launch.json` is now committed (it holds only the dev-server config).
+- **Demo Mode** on the login screen seeds 8 realistic batches locally (no credentials needed); use it to test exports. AI features are disabled there.
+- An old stash (`stash@{0}`, from before the multi-batch work) still exists locally; it was left alone.
 - `npm audit` reports advisories in existing dev tooling (vitest, vite deps), not in the new export packages. `npm audit fix` is a separate cleanup.
 - Main JS chunk is ~565 KB (Chart.js, Supabase, Dexie), separate from the export libraries. Code-splitting could be a later optimization.
