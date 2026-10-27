@@ -312,6 +312,129 @@ h2 {
   font-size: 12px;
 }
 
+/* Logbook scan (AI import) */
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scan-btn {
+  background: var(--card);
+  cursor: pointer;
+}
+
+.scan-btn:has(input:focus-visible) {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+.scan-btn.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.modal-card.import-modal {
+  max-width: 640px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.import-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.import-row {
+  border: 1px solid var(--ln);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.import-row.is-excluded {
+  opacity: 0.5;
+}
+
+.import-row-head {
+  align-items: center;
+}
+
+.import-include {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.import-include input {
+  width: auto;
+  accent-color: var(--acc);
+}
+
+.import-confidence {
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--ln);
+  border-radius: 20px;
+  padding: 2px 8px;
+  color: var(--ok);
+}
+
+.import-confidence.low {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+.import-source {
+  font-size: 12px;
+  font-style: italic;
+}
+
+.import-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.import-field.is-uncertain input,
+.import-field.is-uncertain select {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+}
+
+.import-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.import-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--acc);
+  color: var(--card);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.import-notes,
+.import-disclaimer {
+  font-size: 12px;
+}
+
+.import-error {
+  font-size: 12px;
+}
+
 .badge-pill {
   font-size: 11px;
   border: 1px solid var(--ln);
