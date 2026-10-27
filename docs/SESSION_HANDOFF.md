@@ -1,8 +1,8 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-28
-**Branch:** `main` (pushed, in sync with `origin/main`; local LLM switch merged at `6a77785`)
-**Tests:** 87 passing (`npm test`)
+**Branch:** `main` (pushed; last feature merge `1de555b`)
+**Tests:** 97 passing (`npm test`)
 
 ---
 
@@ -160,19 +160,56 @@ Local branches `feature/ai-parse` and `feature/local-llm` still exist (not pushe
 
 ---
 
-## 6. Environment notes
-- Dev server: `.claude/launch.json` → `npm run dev` (port 3000, falls back to the next free port). `.claude/launch.json` is now committed (it holds only the dev-server config).
-- **Demo Mode** on the login screen seeds 8 realistic batches locally (no credentials needed); use it to test exports and logbook scanning.
+## 6. Done: local Supabase and sync fixes
+
+### Decision: Supabase is local for now
+The user chose to keep Supabase local (2026-10-28); no hosted project is used. `.env` (git-ignored) points the app to `http://127.0.0.1:54321` with the standard local anon key. Start Supabase before using a real account:
+
+```bash
+npx supabase start -x realtime,storage-api,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor
+```
+
+Stop it with `npx supabase stop` (data is kept). The test login is in `supabase/test-user.local` (git-ignored). If a hosted project is added later, run all three files in `supabase/migrations/` there, including `20261028000000_v3_feed_grams.sql`, or feed logs won't sync.
+
+### Setup on this PC (tested 2026-10-28)
+- WSL updated with `wsl --update --web-download` (now WSL 3.0.3). Plain `wsl --update` did nothing on Windows 11 21H2, and Docker Desktop then failed with "WSL needs updating".
+- Docker Desktop 4.96. Starting the full Supabase stack made Docker shut down mid-download (8 GB RAM), so only the services ChickPence uses are started (`-x ...` above).
+- `supabase/config.toml` is committed, so no `supabase init` step is needed.
+- Docker cleanup: removed the unused realtime, logflare, vector and mailpit images and compacted `docker_data.vhdx` (10.6 → 9.2 GB). C: had 17 GB free afterwards.
+
+### Bugs found by running sync end to end, all fixed
+| Problem | Fix |
+|---|---|
+| New batches were saved with the demo user id, so Supabase rejected them (`batch_user_id_fkey`) | `Repository.createBatch` uses the signed-in user |
+| Feed logs failed: the database had `quantity_kg`, the app sends integer `quantity_g` | Migration `20261028000000_v3_feed_grams.sql` switches `feed_log` to grams and converts existing rows (tested: 150.25 kg → 150,250 g; safe to re-run) |
+| One failed upload stopped the whole queue | `pushOutbox` (`syncEngine.js`) keeps going; only records of a rejected batch and later edits of a rejected record wait. The error and attempt count are saved on the outbox item (`last_error`, `attempts`) |
+| Downloading with an empty queue skipped recomputing expense allocations (cost to date missed expenses) | Recompute after every download that changed something |
+| Demo batches showed up for real accounts | `src/db/localData.js`: the browser tracks whose records it holds (`app_state.data_owner`); Demo Mode seeds the 8 sample batches; a real account clears demo or unknown data and downloads its own. Records not uploaded yet are never cleared (`keep-unsynced`) |
+| Offline with an expired login: ~30 s blank screen, then the login screen (locked out of local records) | `auth.js`: with a saved login, start-up waits at most 3 s (`OFFLINE_LOGIN_WAIT_MS`) and opens the saved user (`offline: true`) |
+| After reconnecting, a sync could upload without the user's login (401 / row-level security) | `ensureSession` renews the login before uploading (or skips the sync and keeps the queue); `watchAuth` syncs on `TOKEN_REFRESHED` / `SIGNED_IN`; demo records are never uploaded |
+| Login screen didn't refresh after saving Supabase settings | Re-render after the settings dialog closes |
+
+Tested in the app against local Supabase: login, upload of every record type, download to a fresh browser, offline open in 3.1 s, queued entries uploaded within 5 s of the server returning.
+
+### Still open
+- A record Supabase rejects for good (e.g. bad data) is retried on every sync and is only visible in the browser console and the pending count. There is no screen to see or discard it.
+
+### Commits (on `main`)
+```
+1de555b Merge branch 'feature/local-supabase-sync' into main
+307c946 docs: tested local Supabase setup, offline use and Docker cleanup
+83a8688 fix(sync): make Supabase sync work end to end, locally and offline
+c9f3ae5 docs: list all dependencies and how to run them locally
+```
+Local branch `feature/local-supabase-sync` still exists (not pushed; already merged).
+
+---
+
+## 7. Environment notes
+- Dev server: `.claude/launch.json` → `npm run dev` (port 3000, falls back to the next free port). `.claude/launch.json` is committed (dev-server config only).
+- **Demo Mode** on the login screen seeds 8 realistic batches locally (no credentials needed, no Supabase); use it to test exports and logbook scanning.
+- **Supabase:** local only, see section 6. Docker Desktop must be running before `npx supabase start`.
 - **Ollama** is installed and running on this PC with glm-ocr, qwen3.5:4b, qwen2.5:3b, qwen2.5:1.5b, llama3.2:3b, phi4-mini and nomic-embed-text.
-- **Local Supabase works** (tested 2026-10-28): WSL updated with `wsl --update --web-download` (now WSL 3.0.3), Docker Desktop 4.96, `npx supabase start -x realtime,storage-api,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor`. Config is in `supabase/config.toml`. A test login for the local database is in `supabase/test-user.local` (git-ignored). Stop with `npx supabase stop`.
-- **Sync fixes found by that test:** new batches were saved with the demo user id, so Supabase rejected them (`batch_user_id_fkey`) and sync stopped for everything queued after; `Repository.createBatch` now uses the signed-in user. Feed logs failed because the database had `quantity_kg` while the app sends integer `quantity_g`; new migration `20261028000000_v3_feed_grams.sql` switches the database to grams. **The hosted Supabase project needs that migration too.**
-- **Demo data is per account** (`src/db/localData.js`): the browser remembers whose records it holds (`app_state.data_owner`). Demo Mode seeds the 8 sample batches; a real account logging in clears demo or unknown data and downloads its own. Records still in the outbox are never cleared (`keep-unsynced`). Start-up no longer seeds unconditionally.
-- **Sync no longer stops at the first failed upload** (`pushOutbox` in `syncEngine.js`): only records of a rejected batch and later edits of a rejected record wait; the error and attempt count are kept on the outbox item (`last_error`, `attempts`). Also fixed: downloading with an empty outbox now recomputes expense allocations (a fresh login showed cost to date without expenses).
-- Still open: a record Supabase rejects for good (e.g. bad data) is retried on every sync and only visible in the console and the pending count; there is no UI to see or discard it.
-- Docker cleanup done: removed the unused realtime, logflare, vector and mailpit images and compacted `docker_data.vhdx` (10.6 → 9.2 GB). C: had 17 GB free afterwards.
-- **Supabase is local for now** (user decision, 2026-10-28): `.env` (git-ignored) points to `http://127.0.0.1:54321` with the standard local anon key. No hosted project is used, so the hosted v3 migration step does not apply yet. Start it with the `npx supabase start -x ...` command in the README before running the app; the test login is in `supabase/test-user.local`.
-- **Offline login fixed** (`auth.js`): with no server and an expired access token, start-up used to hang ~30 s (supabase-js retries the renewal) and then show the login screen, locking the user out of their own records. Now, when a saved login exists, start-up waits at most 3 s (`OFFLINE_LOGIN_WAIT_MS`) and opens the saved user (`offline: true`).
-- **Sync after reconnecting fixed** (`syncEngine.js`): a sync could piggyback on a renewal that failed while offline and upload as the anonymous role (401 / row-level security). `ensureSession` now renews (or skips the sync, keeping the queue) before uploading, `watchAuth` syncs on `TOKEN_REFRESHED`/`SIGNED_IN`, and demo records are never uploaded even when Supabase is configured. Tested: offline open 3.1 s, queued entries uploaded within 5 s of the server returning.
 - An old stash (`stash@{0}`, from before the multi-batch work) still exists locally; it was left alone.
 - `npm audit` reports advisories in existing dev tooling (vitest, vite deps), not in the new export packages. `npm audit fix` is a separate cleanup.
 - Main JS chunk is ~565 KB (Chart.js, Supabase, Dexie), separate from the export libraries. Code-splitting could be a later optimization.
