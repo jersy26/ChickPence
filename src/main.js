@@ -1,7 +1,7 @@
 import './style.css';
 import { AuthService } from './services/auth.js';
 import { Repository } from './services/repository.js';
-import { checkAndSeedInitialData } from './db/seed.js';
+import { prepareLocalDataFor } from './db/localData.js';
 import { syncEngine } from './services/syncEngine.js';
 import { renderShell, attachShellListeners } from './ui/shell.js';
 import { renderLogin, attachLoginListeners } from './ui/loginView.js';
@@ -63,16 +63,15 @@ const state = {
 const appContainer = document.getElementById('app');
 
 async function initApp() {
-  // 1. Seed default data if IndexedDB is empty
-  await checkAndSeedInitialData(false);
-
-  // 2. Initialize Authentication
+  // 1. Initialize Authentication
   await AuthService.init();
 
   if (!AuthService.isLoggedIn()) {
     state.view = 'login';
   } else {
     state.view = 'dashboard';
+    // 2. Demo data only for Demo Mode; a real account gets its own records
+    await prepareLocalDataFor(AuthService.getUser());
   }
 
   // 3. Sync engine subscription
@@ -83,7 +82,8 @@ async function initApp() {
   });
 
   if (syncEngine.isOnline()) {
-    syncEngine.syncNow();
+    // Show records downloaded at start-up (not while the login form is open)
+    syncEngine.syncNow().then(() => AuthService.isLoggedIn() && render());
   }
 
   // Scan photos that were waiting for the local AI (no internet needed)
@@ -126,9 +126,15 @@ function updateSyncIndicator() {
 async function render() {
   if (!AuthService.isLoggedIn() || state.view === 'login') {
     appContainer.innerHTML = renderLogin();
-    attachLoginListeners(appContainer, () => {
+    attachLoginListeners(appContainer, async () => {
       state.view = 'dashboard';
+      const action = await prepareLocalDataFor(AuthService.getUser());
+      if (action === 'keep-unsynced') {
+        showToast('Some records from the previous account are not uploaded yet, so they were kept on this device.', 5000);
+      }
       render();
+      // A real account downloads its records right away
+      if (syncEngine.isOnline()) syncEngine.syncNow().then(render);
     });
     return;
   }
