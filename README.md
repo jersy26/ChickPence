@@ -43,8 +43,8 @@ An offline-first web app (PWA) for broiler farms: record expenses, feed, mortali
 | A modern browser | Running the app | **Yes** | Chrome or Edge recommended (camera, IndexedDB, service worker) |
 | [Git](https://git-scm.com/) | Cloning the repository | Recommended | any |
 | [Ollama](https://ollama.com/) + 2 models | **Scan logbook** (local AI) | Optional | Ollama **0.30+** (tested on 0.40.10), models `glm-ocr` and `qwen3.5:4b` |
-| [Supabase](https://supabase.com/) | Cloud sync and real user accounts | Optional | Hosted project, **or** locally with the Supabase CLI + Docker |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Running Supabase locally | Only for local Supabase | any recent version |
+| [Supabase](https://supabase.com/) | Cloud sync and real user accounts | Optional | Hosted project, **or** locally with the Supabase CLI (tested on 2.122, run with `npx`) + Docker |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Running Supabase locally | Only for local Supabase | tested on 4.96 (Windows needs an up-to-date WSL 2) |
 
 Everything else is an npm package and is installed by `npm install` (see [npm packages](#-npm-packages)).
 
@@ -106,6 +106,8 @@ On Windows you can also double-click **`start.bat`**: it opens the browser and s
 On the login screen click **Instant Demo Mode**. The app creates 8 realistic batches (`Batch 2025-08` to `Batch 2026-09`) in the browser's IndexedDB. Nothing is sent anywhere.
 
 To start the demo data over, clear the site data in the browser (DevTools → Application → Storage → Clear site data) and reload.
+
+The demo batches exist only in Demo Mode. When a real Supabase account logs in on the same browser, the demo data is cleared and that account's own records are downloaded. Records that have not been uploaded yet are never cleared.
 
 ---
 
@@ -236,38 +238,53 @@ The database schema is in `supabase/migrations/` and is applied in order:
 |---|---|
 | `20260930000000_init_chickpence.sql` | Tables `batch`, `daily_cost`, `feed_log`, `mortality_log`, `sale`, row-level security |
 | `20260930000001_v2_multi_batch.sql` | Multi-batch model: status `Open`/`Closed`, new farm-level `expense` table, drops `cost_budget` and `feed_type` |
+| `20261028000000_v3_feed_grams.sql` | Feed quantity in whole grams (`feed_log.quantity_g`), like the app stores it; converts existing `quantity_kg` rows |
 
 ### Option A: run Supabase locally (Docker)
 
-Runs PostgreSQL, Auth and Supabase Studio on your computer. Needs [Docker Desktop](https://www.docker.com/products/docker-desktop/) running and about 4 GB of free RAM.
+Runs PostgreSQL, Auth, the REST API and Supabase Studio on your computer. Needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), about 5 GB of free disk for the images and about 2–3 GB of free RAM. The Supabase config (`supabase/config.toml`) is already in the repository, so there is no `supabase init` step.
 
-1. Start Docker Desktop, then check it:
+Tested on Windows 11 21H2 with 8 GB RAM, Docker Desktop 4.96 and Supabase CLI 2.122.
 
-   ```bash
-   docker --version
-   ```
-
-2. Create the Supabase config (first time only; answer **N** to the editor-settings questions). This adds `supabase/config.toml` and keeps the existing migrations:
+1. **Windows only:** Docker Desktop runs on WSL 2, which needs its Linux kernel installed. Open **PowerShell as Administrator** and run the command below, then restart the computer if it asks:
 
    ```bash
-   npx supabase init
+   wsl --update --web-download
    ```
 
-3. Start Supabase. The first run downloads several Docker images and takes a few minutes. The migrations in `supabase/migrations/` are applied automatically:
+   `--web-download` gets WSL straight from Microsoft instead of the Microsoft Store. Plain `wsl --update` goes through the Store and can silently do nothing when Store or Windows updates are restricted (seen on Windows 11 21H2).
+
+   Check it worked: `wsl --version` must print version numbers (e.g. `WSL version: 3.0.3.0`). If it says *"Invalid command line option"*, the old built-in WSL is still active and Docker will show *"WSL needs updating"* / *"Docker Desktop is unable to start"*.
+
+2. Start Docker Desktop and wait until it says **Engine running** (the first start takes 1–3 minutes). Check that the engine, not just the program, is up:
 
    ```bash
-   npx supabase start
+   docker info
    ```
 
-4. Copy the **API URL** (`http://127.0.0.1:54321`) and the **anon key** from the output. To see them again:
+3. Start Supabase with only the services ChickPence uses (database, login, REST API, gateway, Studio). The first run downloads about 3 GB of images. The migrations in `supabase/migrations/` are applied automatically:
 
    ```bash
-   npx supabase status
+   npx supabase start -x realtime,storage-api,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor
    ```
 
-5. Create a user: open **Supabase Studio** at http://127.0.0.1:54323 → **Authentication** → **Add user** → enter an email and password, and tick **Auto Confirm User**.
+   `npx` asks to install the Supabase CLI the first time; answer **y**. Plain `npx supabase start` also works, but it downloads and runs every Supabase service; on an 8 GB PC that made Docker Desktop shut down mid-download (*"unexpected EOF"*). If a download fails, run the command again: finished images are kept.
 
-6. Put the URL and anon key in `.env` (see [Environment variables](#-environment-variables)), restart `npm run dev`, and log in with that user.
+   When it is done it prints `Applying migration ...` for each file and then the URLs and keys.
+
+4. Get the **API URL** and the **anon key**:
+
+   ```bash
+   npx supabase status -o env
+   ```
+
+   Use `API_URL` (`http://127.0.0.1:54321`) and `ANON_KEY` (the long value starting with `eyJ`).
+
+5. Create a user: open **Supabase Studio** at http://127.0.0.1:54323 → **Authentication** → **Users** → **Add user** → **Create new user**. Enter an email and password; **Auto confirm user?** is ticked by default, so leave it on. Click **Create user**.
+
+6. Connect the app (see [Connecting the app](#connecting-the-app)): put `API_URL` and `ANON_KEY` in `.env` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` and restart `npm run dev`, or paste them in **⚙ Connect Supabase Cloud** on the login screen. Then log in with the user from step 5.
+
+7. Check sync: create a batch or add a log. The sidebar sync status should return to **All synced**, and the row appears in Studio → **Table Editor**.
 
 Other useful commands:
 
@@ -276,16 +293,37 @@ Other useful commands:
 npx supabase stop
 ```
 ```bash
-# Wipe the local database and re-apply all migrations
+# Apply migrations added since you last started
+npx supabase migration up
+```
+```bash
+# Wipe the local database and re-apply all migrations (deletes users and data)
 npx supabase db reset
+```
+
+**Freeing disk space afterwards.** Docker keeps its images in one disk file (`%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx` on Windows) that grows but never shrinks on its own. Images the `-x` command doesn't use can be removed with `docker rmi` (e.g. `realtime`, `logflare`, `vector`, `mailpit`); keep `storage-api`, which `supabase start` downloads even when excluded. To give the space back to Windows, quit Docker Desktop, run `wsl --shutdown`, then in an Administrator `diskpart`:
+
+```
+select vdisk file="C:\Users\<you>\AppData\Local\Docker\wsl\disk\docker_data.vhdx"
+attach vdisk readonly
+compact vdisk
+detach vdisk
 ```
 
 ### Option B: hosted Supabase project
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. In the **SQL Editor**, run `supabase/migrations/20260930000000_init_chickpence.sql`, then `20260930000001_v2_multi_batch.sql`. Read the comments at the top of the v2 file first if the project already has data.
+2. In the **SQL Editor**, run the three files in `supabase/migrations/` in order. Read the comments at the top of the v2 file first if the project already has data. A project set up before October 2026 needs only `20261028000000_v3_feed_grams.sql`; without it, feed logs don't sync.
 3. **Authentication** → **Users** → **Add user**.
 4. **Project Settings** → **API**: copy the **Project URL** and the **anon public** key into `.env`.
+
+### Working offline with a Supabase account
+
+- **Demo Mode** never needs a login or a connection.
+- **The first login** on a device needs Supabase to be reachable (local: `npx supabase start`; hosted: internet).
+- **After that, no login is needed offline.** The login is saved on the device. When the app starts without a connection, it waits up to 3 seconds for Supabase, then opens your records from the device. This also works after the saved login has expired (more than an hour offline).
+- **Entries made offline** wait in the sync queue. When Supabase is reachable again, the app renews the login and uploads them within a few seconds; nothing to do.
+- **Don't log out while offline.** Logging in again needs Supabase. Logging out keeps entries that are not uploaded yet.
 
 ### Connecting the app
 
@@ -387,7 +425,9 @@ ChickPence/
 │   │   └── modals.js, toast.js
 │   ├── main.js                 # App start-up and view router
 │   └── style.css
-├── supabase/migrations/        # PostgreSQL schema
+├── supabase/
+│   ├── config.toml             # Local Supabase settings (npx supabase start)
+│   └── migrations/             # PostgreSQL schema
 ├── tests/                      # Vitest unit tests
 ├── docs/SESSION_HANDOFF.md     # Development notes and decisions
 ├── .env.example
@@ -409,5 +449,8 @@ ChickPence/
 | Scan is very slow | Normal on a CPU-only PC (about 2 min per page with 8 GB RAM). Close other apps; the first scan after start-up also loads the model |
 | "Cannot reach the local AI" from a phone | Set `OLLAMA_HOST` and `OLLAMA_ORIGINS` and open the app over `http` (see [Scanning from a phone](#scanning-from-a-phone-or-another-computer)) |
 | Login says invalid credentials with Supabase | Create the user in Supabase (Studio → Authentication → Add user, with Auto Confirm) |
-| `npx supabase start` fails | Make sure Docker Desktop is running (`docker ps` should work) |
+| `npx supabase start` fails | Make sure the Docker engine is running (`docker info` must not show an error). If downloads stop with *"unexpected EOF"*, Docker ran out of memory: use the `-x ...` command from Option A step 3 and run it again |
+| Feed logs never finish syncing (`Could not find the 'quantity_g' column`) | Run `20261028000000_v3_feed_grams.sql` on the database (`npx supabase migration up` locally, SQL Editor when hosted) |
+| Docker Desktop says "unable to start" or "WSL needs updating" (Windows) | Run `wsl --update --web-download` in PowerShell as Administrator, check `wsl --version` prints a version, restart, then start Docker Desktop again |
 | Changes to `.env` have no effect | Restart `npm run dev`; also check the in-app ⚙ settings, which override `.env` |
+| Some records stay "pending sync" | A record Supabase rejects is retried on every sync, and other records keep uploading. Records of a rejected batch wait for it. The browser console shows `Sync error on …` with the reason |
