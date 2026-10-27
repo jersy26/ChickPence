@@ -30,20 +30,29 @@ function metricCell(val, formatter) {
   return formatter(val);
 }
 
-/** "Scan logbook" (photo → AI drafts) plus a "Review scanned" button when queued photos are done. */
+/**
+ * "Scan logbook" (photo → local AI drafts), a "Review scanned" button when
+ * queued photos are done, and the local AI settings. When the local AI is off
+ * the button still works: the photo waits in the queue.
+ */
 export function renderScanActions(importState) {
   if (!importState) return '';
   const { unavailableReason, queued = 0, ready = 0 } = importState;
   const waiting = queued - ready;
+  const title = unavailableReason
+    ? `${unavailableReason} Photos you take now will be scanned later.`
+    : 'Take or pick a photo of the logbook; the local AI drafts the entries for you to review';
   return `
     ${ready > 0 ? `<button class="btn-action accent" id="btn-review-scans">Review scanned (${ready})</button>` : ''}
-    <label class="btn-action scan-btn ${unavailableReason ? 'is-disabled' : ''}"
-           title="${unavailableReason || 'Take or pick a photo of the logbook; the AI drafts the entries for you to review'}">
-      📷 Scan logbook${waiting > 0 ? ` <span class="text-mut">(${waiting} waiting)</span>` : ''}
-      <input type="file" id="input-scan-logbook" accept="image/*" capture="environment" hidden ${unavailableReason ? 'disabled' : ''} />
+    <label class="btn-action scan-btn ${unavailableReason ? 'is-warn' : ''}" title="${escapeAttr(title)}">
+      📷 Scan logbook${unavailableReason ? ' <span class="scan-status">· AI off</span>' : ''}${waiting > 0 ? ` <span class="text-mut">(${waiting} waiting)</span>` : ''}
+      <input type="file" id="input-scan-logbook" accept="image/*" capture="environment" hidden />
     </label>
+    <button class="btn-action btn-ai-settings" id="btn-ai-settings" title="Local AI settings" aria-label="Local AI settings">⚙</button>
   `;
 }
+
+const escapeAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
 function renderBatchSelectorOptions(openBatches, selectedId) {
   return openBatches
@@ -542,12 +551,10 @@ export function renderBatches(
 // ---------------------------------------------------------------------------
 
 export function attachBatchesListeners(container, state, callbacks) {
-  const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview, onLoadMoreExpenses, onScanPhoto, onReviewScans } = callbacks;
+  const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview, onLoadMoreExpenses, onScanPhoto, onReviewScans, onAiSettings } = callbacks;
 
   // Scan logbook: the file input sits inside the button label
-  container.querySelector('.scan-btn.is-disabled')?.addEventListener('click', (e) => {
-    showToast(e.currentTarget.getAttribute('title'), 4000); // no hover tooltip on phones
-  });
+  container.querySelector('#btn-ai-settings')?.addEventListener('click', () => onAiSettings?.());
   const scanInput = container.querySelector('#input-scan-logbook');
   scanInput?.addEventListener('change', () => {
     const file = scanInput.files?.[0];

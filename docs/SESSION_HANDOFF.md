@@ -1,8 +1,8 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-28
-**Branch:** `main` (pushed, in sync with `origin/main`; Phase 2 merged at `fdf678a`)
-**Tests:** 70 passing (`npm test`)
+**Branch:** `main` (Phase 2 merged at `fdf678a`; the switch to a local LLM is not committed yet)
+**Tests:** 87 passing (`npm test`)
 
 ---
 
@@ -13,23 +13,24 @@ ChickPence is mainly a reporting system, so we are adding four features:
 | Phase | Feature | Status |
 |---|---|---|
 | 1 | Export reports (Excel, PDF, CSV) | ✅ Done, merged, pushed |
-| 2 | `ai-parse` edge function + logbook photo OCR + draft review modal | ✅ Done, merged, pushed (Edge Function **not deployed yet**) |
+| 2 | Logbook photo scanning with a **local LLM (Ollama)** + draft review modal | ✅ Done and tested end to end on this PC |
 | 3 | Voice input in the entry form | ⏳ Next |
-| 4 | AI suggestions (`ai-insights`) | ⏳ Planned |
+| 4 | AI suggestions | ⏳ Planned (use the local LLM too) |
 
-### Architecture (agreed)
+### Architecture (updated: local LLM, no cloud AI)
 
 ```
-Logbook photo ─┐
-               ├─► ai-parse (Supabase Edge Fn → Claude) ─► Draft review modal ─┐
-Voice → text ──┘                                                                │
-Manual form (existing "+ Add New Log") ─────────────────────────────────────────┤
-                                                                                ▼
+Logbook photo ─► Ollama OCR model (glm-ocr) ─► text ─┐
+Voice → text ────────────────────────────────────────┼─► logbookParser rules ─► Draft review modal ─┐
+                       lines the rules can't read ───┘   └► Ollama text model (fallback)          │
+Manual form (existing "+ Add New Log") ────────────────────────────────────────────────────────────┤
+                                                                                                   ▼
                                    Repository.save* + calcBatchMetrics (single write path)
                                          │                    │                     │
-                                   Dexie + outbox       Export module        ai-insights (Edge Fn)
+                                   Dexie + outbox       Export module        AI suggestions (local LLM)
                                    → Supabase sync      xlsx / pdf / csv     → Suggestions card
 ```
+The user asked for a local LLM instead of Claude, so the Supabase Edge Function `ai-parse` was removed. The browser talks to Ollama directly; photos never leave the computer and no internet or API key is needed.
 
 **Core rule:** AI never writes to the database. OCR and voice only produce *drafts*. The user confirms them, and they are saved through the existing `Repository.saveExpense / saveFeedLog / saveMortalityLog / saveSale`, so allocation, validation, the outbox and sync keep working unchanged.
 
@@ -76,69 +77,91 @@ Local branches `feature/export-reports` and `feature/export-modal` still exist (
 
 ---
 
-## 3. Done: Phase 2 (ai-parse + photo OCR)
+## 3. Done: Phase 2 (logbook photo scanning, local LLM)
 
 ### What the user sees
-- A **📷 Scan logbook** button next to **+ Add New Log** on the Batches page. It opens the camera (or file picker), shrinks the photo, and sends it to `ai-parse`.
-- A **Review Scanned Entries** modal: one row per draft, every field editable, a confidence badge (red below 70%), and a "?" on fields the AI was unsure of or that are missing. Rows can be unticked. **Save selected** validates first, then saves through `Repository.save*`. If a save fails, only the failed rows stay in the modal, so nothing is saved twice.
-- **Offline:** the photo is stored and scanned automatically when the app comes back online; then a **Review scanned (N)** button appears. A failed scan keeps the photo so the user can retry or delete it.
-- **Demo Mode / no Supabase:** the button is greyed out; tapping it shows why (phones have no hover tooltip).
+- A **📷 Scan logbook** button next to **+ Add New Log** on the Batches page, plus a **⚙** button for the local AI settings. The button opens the camera (or file picker) and shrinks the photo to ≤1600px.
+- A **Scanning the logbook** progress window with the current step, a timer and **Cancel**. On this PC a full page takes about 2 minutes.
+- A **Review Scanned Entries** modal: one row per draft, every field editable, a confidence badge (red below 70%), and a "?" on fields that were unclear or are missing. Rows can be unticked. **Save selected** validates first, then saves through `Repository.save*`. If a save fails, only the failed rows stay in the modal, so nothing is saved twice.
+- **Local AI off** (Ollama not running or a model missing): the button shows "· AI off" with the reason as its tooltip, but still works. The photo waits in the queue and is scanned the next time the Batches page opens with Ollama running; then **Review scanned (N)** appears. A failed scan keeps the photo so the user can retry or delete it.
+- Works in **Demo Mode** too (no Supabase or internet needed).
+
+### How a photo is read
+1. **OCR model** (`glm-ocr`, 0.9B, vision) turns the photo into plain text, one logbook line per line.
+2. `splitRecords` joins continuation lines (a line that doesn't start with a date belongs to the record above, e.g. the second line of a sale).
+3. **`logbookParser` rules** read the usual lines instantly: Filipino/English months (including OCR's "Ok+"), M/D dates, kahapon/ngayon, the date carried down from the line above, "Batch 2026-09" / "B-07" / "batch 9", patay, benta … hds … kg @price/kg, patuka … kg / sako, and ₱/P amounts (feed words → feed expense, otherwise other expense).
+4. Only records the rules don't recognise go to the **text model** (`qwen3.5:4b`, `think: false`, JSON-schema `format`), with their original line numbers. Anything still unread is listed in the notes.
+
+**Why rules first** (measured on this PC: 7.2 GB RAM, Intel UHD, no GPU, Ollama 0.40.10):
+
+| Setup | Time for a 6-record page | Result |
+|---|---|---|
+| glm-ocr → qwen2.5:3b | ~4.5 min | Skipped 3 records, labeled the sale as an expense |
+| glm-ocr → qwen3.5:4b | ~12 min | All records, but dates off by 2 days, 150 kg read as 7,500 kg, 2 batches missing, every field flagged |
+| **glm-ocr → rules (current)** | **~2 min** | **All 6 correct** |
 
 ### Files
 | File | Role |
 |---|---|
-| `supabase/functions/ai-parse/index.ts` | Deno Edge Function. `mode: "image"` → `claude-sonnet-5-5` (effort `medium`, server-side refusal fallback `fallbacks: "default"`); `mode: "text"` → `claude-haiku-5-5` (effort `low`). Structured JSON output via `output_config.format` (json_schema). Returns `{ entries, notes }`; never touches the database |
-| `src/services/aiParseService.js` | `aiUnavailableReason`, `resizeImage`, `parseImage`, `parseText`; pure `normalizeDrafts`, `matchBatch`, `validateDraft`, `draftToSave`, `localToday`; offline queue (`queueImageJob`, `processQueuedJobs`, `getReadyJobs`, `retryJob`, `deleteJob`) |
-| `src/ui/importReviewModal.js` | `renderImportReviewModal` (pure), `openImportReviewModal`, `escapeHtml` |
-| `src/ui/batchesView.js` | `renderScanActions(importState)`; new `importState` argument on `renderBatches`; `onScanPhoto` / `onReviewScans` callbacks |
-| `src/main.js` | `scanLogbookPhoto`, `reviewNextScan`, `processQueue` (runs at start-up and whenever the app comes back online) |
+| `src/services/localLlm.js` | Ollama client: settings (`getLlmSettings` / `setLlmSettings`, localStorage `chickpence_local_llm`, env defaults `VITE_OLLAMA_URL`, `VITE_OLLAMA_OCR_MODEL`, `VITE_OLLAMA_TEXT_MODEL`), `listModels`, `checkLocalLlm` (cached 15 s), `transcribeImage`, `extractEntries`, `splitRecords`, `buildExtractPrompt`, `DRAFT_SCHEMA`, `EXTRACT_SYSTEM_PROMPT`. 10-minute request timeout, cancel via `AbortSignal` |
+| `src/services/logbookParser.js` | Pure rule-based parser: `parseRecord`, `parseRecords`, `parseDate`, `parseBatch` |
+| `src/services/aiParseService.js` | `aiUnavailableReason` (async), `resizeImage`, `parseImage` (OCR → extract, with `onProgress`), `parseText`; pure `normalizeDrafts`, `matchBatch`, `validateDraft`, `draftToSave`, `localToday`; queue (`queueImageJob`, `processQueuedJobs`, `getReadyJobs`, `retryJob`, `deleteJob`) |
+| `src/ui/importReviewModal.js` | `renderImportReviewModal` (pure), `openImportReviewModal`, `openScanProgressModal`, `escapeHtml` |
+| `src/ui/localAiModal.js` | Local AI settings: Ollama address, reading model, sorting model; **Test connection** fills dropdowns with the installed models |
+| `src/ui/batchesView.js` | `renderScanActions(importState)`; `onScanPhoto` / `onReviewScans` / `onAiSettings` callbacks |
+| `src/main.js` | `scanLogbookPhoto`, `reviewNextScan`, `processQueue` (at start-up and when the Batches page has waiting photos) |
 | `src/db/dexie.js` | **v4**: `import_jobs: '++id, status, created_at'` (local only, not synced) |
-| `src/style.css` | `.import-*`, `.scan-btn` styles |
-| `tests/aiImport.test.js` | 18 unit tests (normalization, validation, save mapping, HTML escaping, scan button states) |
+| `src/style.css` | `.import-*`, `.scan-*`, `.ai-hint` styles |
+| `tests/aiImport.test.js`, `tests/localAi.test.js` | 35 unit tests (parser on the real OCR output, model fallback with mocked `fetch`, availability, normalization, validation, HTML escaping, settings modal) |
 
 ### Decisions and gotchas
-- **Forced `tool_choice` returns a 400 on `claude-sonnet-5-5`,** so the function uses structured output (`output_config.format`) instead of a forced tool. Every field is in the schema and unused ones are `null`.
-- **Expenses never get a batch.** They are farm-level and allocated by the existing engine. Feed, mortality and sale drafts get a batch from the AI's `batch_hint`, matched to open batch names; with only one open batch it is used automatically.
+- **Expenses never get a batch.** They are farm-level and allocated by the existing engine. Feed, mortality and sale drafts get a batch from `batch_hint`, matched to open batch names; with only one open batch it is used automatically.
 - **Sacks of feed** are converted at 50 kg/sack and flagged as uncertain.
-- **AI text is HTML-escaped** before it goes into the modal (buyer names, source quotes, notes).
-- **"Today" is sent from the client in local time,** so "kahapon" resolves correctly before 8 AM PH time.
+- **Filipino "may 3 patay"** ("there are 3 dead") is not read as May 3: a bare "may" only counts as a month at the start of a line.
+- **Dates are never in the future:** a month/day after today goes to last year.
+- Small models flag every field as uncertain; `normalizeDrafts` keeps only flags on fields the entry type uses.
+- **AI text is HTML-escaped** before it goes into the modal.
+- **"Today" comes from the client in local time,** so "kahapon" resolves correctly before 8 AM PH time.
 - `import_jobs.status`: `queued` → `ready` (drafts stored, photo dropped) or `failed` (photo kept for retry). A job is deleted once its drafts are saved or discarded.
-- Requests need a signed-in Supabase user: Edge Functions verify the JWT by default, and `supabase.functions.invoke` sends it.
-- **Not yet run against Claude.** Deno and the Supabase CLI are not installed on the dev machine, so the function has not been type-checked or called. The review modal and save path were tested in Demo Mode with sample drafts.
+- **CORS:** Ollama accepts `http://localhost:*` by default, so the dev server works as is. A phone or another computer reaching the farm PC needs `OLLAMA_HOST=0.0.0.0` and `OLLAMA_ORIGINS=<app origin>` set on that PC, and the app must be served over plain `http` on the LAN (browsers block an `https` page from calling `http://<LAN IP>:11434`).
+- The PC is short on memory: with the browser open only ~250–750 MB stay free, so the first scan after start-up is slower while the model loads.
+- The Claude Edge Function (`supabase/functions/ai-parse`) was deleted; no API key is needed any more.
 
-### Deploy (still to do)
+### Setup on another computer
 ```bash
-supabase secrets set ANTHROPIC_API_KEY=your-key
-supabase functions deploy ai-parse
+ollama pull glm-ocr
+ollama pull qwen3.5:4b
 ```
-Then sign in with a real Supabase account (not Demo Mode), scan a logbook page, and check the drafts. Logs: Supabase dashboard → Edge Functions → `ai-parse`.
+Then open **⚙** next to Scan logbook → **Test connection** → pick the models → **Save**.
 
 ### Commits (on `main`)
 ```
 fdf678a Merge branch 'feature/ai-parse' into main
 5df8893 feat(ai): scan logbook photos into reviewable draft entries
 ```
-Local branch `feature/ai-parse` still exists (not pushed; already merged).
+The switch from the Claude Edge Function to the local LLM is **not committed yet**. Local branch `feature/ai-parse` still exists (not pushed; already merged).
 
 ---
 
 ## 4. Next: Phase 3 voice input (decided with user)
-- Reuse what Phase 2 built: `parseText(transcript, batchNames)` already calls `ai-parse` text mode, and `normalizeDrafts` / `validateDraft` turn the result into checked drafts.
+- Reuse what Phase 2 built: `parseText(transcript, batchNames)` runs the same rules + local-model fallback, and `normalizeDrafts` / `validateDraft` turn the result into checked drafts. Spoken sentences are freer than logbook lines, so more of them will reach the slow text model; consider extending `logbookParser` with spoken patterns first.
 - A **mic button inside the existing "+ Add New Log" modal**, not a separate import screen.
-- Web Speech API (`fil-PH` / `en-PH`, Taglish) → show the transcript → `ai-parse` text mode → **prefill the form** → the user taps Save as usual (the existing form acts as the review step).
-- One entry per recording at first. Hide the mic when offline or unsupported (works in Chrome/Edge; limited on iOS Safari; not in Firefox).
-- Thesis note: Web Speech sends audio to Google. Mention it in the PRD privacy section.
+- Web Speech API (`fil-PH` / `en-PH`, Taglish) → show the transcript → `parseText` → **prefill the form** → the user taps Save as usual (the existing form acts as the review step).
+- One entry per recording at first. Hide the mic when unsupported (works in Chrome/Edge; limited on iOS Safari; not in Firefox).
+- Privacy: Web Speech sends audio to Google, which conflicts with the local-only AI. Either say so in the PRD privacy section, or use a local speech model (e.g. Whisper on a local server) instead.
 
 ## 5. Phase 4: AI suggestions
-- Edge Function `ai-insights` receives **only computed metrics** (cost breakdown, FCR, mortality trend, margins, `calcDashboardAverages`). No buyer names.
+- Use the local LLM (`localLlm.js`) instead of an Edge Function. Send **only computed metrics** (cost breakdown, FCR, mortality trend, margins, `calcDashboardAverages`). No buyer names.
 - Returns 3–5 suggestions, each tied to a specific number. They show in a "Suggestions" card on the Dashboard and Summary, labeled AI-generated. Cache them in Dexie (`ai_insights` table).
+- Generation is slow on CPU (minutes), so run it in the background and only when the metrics change.
 - The existing rule-based warning flags stay as they are. AI is advisory only.
 
 ---
 
 ## 6. Environment notes
 - Dev server: `.claude/launch.json` → `npm run dev` (port 3000, falls back to the next free port). `.claude/launch.json` is now committed (it holds only the dev-server config).
-- **Demo Mode** on the login screen seeds 8 realistic batches locally (no credentials needed); use it to test exports. AI features are disabled there.
+- **Demo Mode** on the login screen seeds 8 realistic batches locally (no credentials needed); use it to test exports and logbook scanning.
+- **Ollama** is installed and running on this PC with glm-ocr, qwen3.5:4b, qwen2.5:3b, qwen2.5:1.5b, llama3.2:3b, phi4-mini and nomic-embed-text.
 - An old stash (`stash@{0}`, from before the multi-batch work) still exists locally; it was left alone.
 - `npm audit` reports advisories in existing dev tooling (vitest, vite deps), not in the new export packages. `npm audit fix` is a separate cleanup.
 - Main JS chunk is ~565 KB (Chart.js, Supabase, Dexie), separate from the export libraries. Code-splitting could be a later optimization.

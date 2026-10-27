@@ -14,7 +14,8 @@ import { renderSummary, attachSummaryListeners } from './ui/summaryView.js';
 import { computeAllocationsForExpense } from './services/allocationEngine.js';
 import { db } from './db/dexie.js';
 import { showToast } from './ui/toast.js';
-import { openImportReviewModal } from './ui/importReviewModal.js';
+import { openImportReviewModal, openScanProgressModal } from './ui/importReviewModal.js';
+import { openLocalAiModal } from './ui/localAiModal.js';
 import {
   aiUnavailableReason,
   resizeImage,
@@ -77,16 +78,16 @@ async function initApp() {
   // 3. Sync engine subscription
   state.syncStatus = await syncEngine.getSyncStatus();
   syncEngine.subscribe((newStatus) => {
-    const cameOnline = newStatus.online && !state.syncStatus.online;
     state.syncStatus = newStatus;
     updateSyncIndicator();
-    if (cameOnline && AuthService.isLoggedIn()) processQueue(); // scan photos taken offline
   });
 
   if (syncEngine.isOnline()) {
     syncEngine.syncNow();
-    if (AuthService.isLoggedIn()) processQueue();
   }
+
+  // Scan photos that were waiting for the local AI (no internet needed)
+  if (AuthService.isLoggedIn()) processQueue();
 
   // 4. Initial render
   await render();
@@ -247,7 +248,8 @@ async function render() {
           render();
         },
         onScanPhoto: (file) => scanLogbookPhoto(file, openBatchesData.map((d) => d.batch)),
-        onReviewScans: () => reviewNextScan(openBatchesData.map((d) => d.batch))
+        onReviewScans: () => reviewNextScan(openBatchesData.map((d) => d.batch)),
+        onAiSettings: () => openLocalAiModal(render)
       }
     );
 
@@ -307,14 +309,13 @@ function openExport(allBatches, defaultBatchId = null) {
 // ---------------------------------------------------------------------------
 
 async function loadImportState() {
-  const [queued, ready] = await Promise.all([countPendingJobs(), getReadyJobs()]);
-  return { unavailableReason: aiUnavailableReason(), queued, ready: ready.length };
+  const [queued, ready, unavailableReason] = await Promise.all([countPendingJobs(), getReadyJobs(), aiUnavailableReason()]);
+  // Photos taken while the local AI was off get scanned once it is back
+  if (!unavailableReason && queued > ready.length) processQueue();
+  return { unavailableReason, queued, ready: ready.length };
 }
 
 async function scanLogbookPhoto(file, openBatches) {
-  const reason = aiUnavailableReason();
-  if (reason) return showToast(reason, 4000);
-
   let image;
   try {
     image = await resizeImage(file);
@@ -323,19 +324,26 @@ async function scanLogbookPhoto(file, openBatches) {
     return showToast('Could not read that photo. Try a JPEG or PNG.');
   }
 
-  if (!syncEngine.isOnline()) {
+  const reason = await aiUnavailableReason({ force: true });
+  if (reason) {
     await queueImageJob(image);
-    showToast('Offline · photo saved. It will be scanned when you are back online.', 4000);
+    showToast(`${reason} The photo was saved and will be scanned when the local AI is ready.`, 5000);
     return render();
   }
 
-  showToast('Reading the logbook…', 60000);
+  const controller = new AbortController();
+  const progress = openScanProgressModal({ onCancel: () => controller.abort() });
   try {
-    const result = await parseImage(image, openBatches.map((b) => b.batch_name));
-    showToast('Logbook read', 1200);
+    const result = await parseImage(image, openBatches.map((b) => b.batch_name), {
+      signal: controller.signal,
+      onProgress: progress.update
+    });
+    progress.close();
     openReview(result, openBatches);
   } catch (err) {
-    console.error('ai-parse failed', err);
+    progress.close();
+    if (controller.signal.aborted) return showToast('Scan cancelled');
+    console.error('Local AI scan failed', err);
     // Keep the photo so the user does not have to retake it
     await queueImageJob(image, { error: err.message });
     showToast(`Scan failed: ${err.message} The photo was kept; retry from "Review scanned".`, 5000);
@@ -366,8 +374,8 @@ async function reviewNextScan(openBatches) {
   if (job.status === 'failed') {
     if (confirm(`This photo could not be scanned (${job.error}). Try again? Cancel deletes the photo.`)) {
       await retryJob(job.id);
-      showToast('Retrying…');
-      await processQueue();
+      showToast('Retrying in the background… this can take a few minutes.', 4000);
+      processQueue();
     } else {
       await deleteJob(job.id);
     }

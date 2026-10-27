@@ -329,9 +329,40 @@ h2 {
   outline-offset: 2px;
 }
 
-.scan-btn.is-disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.scan-btn.is-warn .scan-status {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.btn-ai-settings {
+  background: var(--card);
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.ai-hint {
+  font-size: 11px;
+}
+
+.scan-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 14px;
+}
+
+.scan-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--fill);
+  border-top-color: var(--acc);
+  border-radius: 50%;
+  animation: scan-spin 0.9s linear infinite;
+  flex: none;
+}
+
+@keyframes scan-spin {
+  to { transform: rotate(360deg); }
 }
 
 .modal-card.import-modal {
