@@ -100,6 +100,12 @@ export const Repository = {
     return e && !e.deleted_at ? e : null;
   },
 
+  /** Map of expense_id → expense for the given ids (used by exports for entry dates) */
+  async getExpensesByIds(expenseIds) {
+    const rows = await db.expenses.bulkGet([...new Set(expenseIds)]);
+    return new Map(rows.filter(Boolean).map((e) => [e.expense_id, e]));
+  },
+
   // ---------------------------------------------------------------------------
   // BATCH MUTATIONS
   // ---------------------------------------------------------------------------

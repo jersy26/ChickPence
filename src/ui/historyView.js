@@ -6,11 +6,13 @@ import {
   formatPercent,
   formatDate
 } from '../services/calculations.js';
+import { renderExportButtons, attachExportListeners } from './exportMenu.js';
 
-export function renderHistory(batchesWithFullData, searchQuery = '', statusFilter = 'All') {
+/** Batches matching the History search box and status chip (also used for export). */
+export function filterHistoryBatches(batchesWithFullData, searchQuery = '', statusFilter = 'All') {
   const query = searchQuery.trim().toLowerCase();
 
-  const filteredBatches = batchesWithFullData.filter((item) => {
+  return batchesWithFullData.filter((item) => {
     const matchesQuery = item.batch.batch_name.toLowerCase().includes(query);
     const matchesStatus =
       statusFilter === 'All' ||
@@ -18,6 +20,10 @@ export function renderHistory(batchesWithFullData, searchQuery = '', statusFilte
       (statusFilter === 'Closed' && item.batch.status === 'Closed');
     return matchesQuery && matchesStatus;
   });
+}
+
+export function renderHistory(batchesWithFullData, searchQuery = '', statusFilter = 'All') {
+  const filteredBatches = filterHistoryBatches(batchesWithFullData, searchQuery, statusFilter);
 
   const chips = ['All', 'Open', 'Closed']
     .map(
@@ -67,6 +73,7 @@ export function renderHistory(batchesWithFullData, searchQuery = '', statusFilte
   return `
     <div class="top-bar">
       <h1>Batch History</h1>
+      ${filteredBatches.length ? renderExportButtons('history') : ''}
     </div>
 
     <div class="flex-row" style="flex-wrap: wrap; gap: 12px;">
@@ -104,7 +111,9 @@ export function renderHistory(batchesWithFullData, searchQuery = '', statusFilte
   `;
 }
 
-export function attachHistoryListeners(container, onNavigate, onFilterChange) {
+export function attachHistoryListeners(container, onNavigate, onFilterChange, onExport) {
+  if (onExport) attachExportListeners(container, 'history', onExport);
+
   const searchInput = container.querySelector('#history-search-input');
   searchInput?.addEventListener('input', (e) => {
     onFilterChange(e.target.value, null);

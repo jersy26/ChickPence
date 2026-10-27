@@ -228,6 +228,24 @@ h2 {
   opacity: 0.88;
 }
 
+.btn-action:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.export-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.export-group .export-btn {
+  padding: 6px 12px;
+  font-size: 13px;
+  background: var(--card);
+}
+
 .badge-pill {
   font-size: 11px;
   border: 1px solid var(--ln);

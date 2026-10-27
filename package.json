@@ -12,7 +12,10 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
     "chart.js": "^4.5.1",
-    "dexie": "^4.0.11"
+    "dexie": "^4.0.11",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
+    "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.9",
