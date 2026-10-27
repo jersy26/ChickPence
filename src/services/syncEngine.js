@@ -1,12 +1,14 @@
 import { db } from '../db/dexie.js';
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js';
 import { recomputeAllAllocations } from './allocationService.js';
+import { AuthService } from './auth.js';
 
 class SyncEngine {
   constructor() {
     this.isSimulatedOffline = false;
     this.isSyncing = false;
     this.listeners = new Set();
+    this.watchedClients = new WeakSet();
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => this.handleNetworkChange());
@@ -167,6 +169,30 @@ class SyncEngine {
     }
   }
 
+  /**
+   * Make sure the Supabase login is valid, renewing it if needed. After being
+   * offline, getSession() can still be holding a renewal that failed while the
+   * server was unreachable, so ask for a fresh one once before giving up.
+   */
+  async ensureSession(supabase) {
+    const { data } = await supabase.auth.getSession();
+    if (data?.session) return true;
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    return Boolean(refreshed?.session);
+  }
+
+  /** Sync as soon as the login is (re)established, e.g. right after reconnecting. */
+  watchAuth(supabase) {
+    if (this.watchedClients.has(supabase)) return;
+    this.watchedClients.add(supabase);
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+        // Outside the auth callback: supabase-js holds a lock while it runs
+        setTimeout(() => this.syncNow(), 0);
+      }
+    });
+  }
+
   async syncNow() {
     if (this.isSyncing) return;
     this.isSyncing = true;
@@ -174,9 +200,11 @@ class SyncEngine {
 
     try {
       const supabase = getSupabase();
+      const user = AuthService.getUser();
 
-      // Demo/Local mode: simulate sync by clearing outbox
-      if (!supabase) {
+      // Demo/Local mode: simulate sync by clearing outbox. Demo records are
+      // never uploaded, even when Supabase is configured.
+      if (!supabase || user?.isDemo) {
         const outboxItems = await db.outbox.toArray();
         if (outboxItems.length > 0) {
           await new Promise((resolve) => setTimeout(resolve, 800));
@@ -185,36 +213,38 @@ class SyncEngine {
         return { success: true, count: outboxItems.length };
       }
 
-      // Supabase mode
+      // Logged out: keep anything not uploaded yet for the next login
+      if (!user) return { success: false, count: 0, reason: 'signed-out' };
+
+      // Supabase mode. Never upload without the user's login: the database
+      // would refuse it (row-level security) and the items would look broken.
+      this.watchAuth(supabase);
+      if (!(await this.ensureSession(supabase))) {
+        return { success: false, count: 0, reason: 'no-session' };
+      }
+
       const outboxItems = await db.outbox.orderBy('id').toArray();
       if (!outboxItems.length) {
-        await this.pullFromSupabase();
+        // Downloaded expenses, sales or deaths change how costs are shared between batches
+        if (await this.pullFromSupabase()) await recomputeAllAllocations();
         return { success: true, count: 0 };
       }
 
-      // Parents (batches) first, then children
-      const batchEntries = outboxItems.filter((i) => i.table_name === 'batches');
-      const childEntries = outboxItems.filter((i) => i.table_name !== 'batches');
-
-      const orderedItems = [...batchEntries, ...childEntries];
-      const successfullySyncedIds = [];
-
-      for (const item of orderedItems) {
+      const { synced, failed } = await pushOutbox(outboxItems, async (item) => {
         const sbTable = this.getSupabaseTableName(item.table_name);
         const { error } = await supabase
           .from(sbTable)
           .upsert(item.payload, { onConflict: this.getPrimaryKeyField(item.table_name) });
+        if (error) console.error(`Sync error on ${sbTable}:`, error);
+        return error;
+      });
 
-        if (error) {
-          console.error(`Sync error on ${sbTable}:`, error);
-          break;
-        } else {
-          successfullySyncedIds.push(item.id);
-        }
+      if (synced.length) {
+        await db.outbox.bulkDelete(synced);
       }
-
-      if (successfullySyncedIds.length) {
-        await db.outbox.bulkDelete(successfullySyncedIds);
+      // Failed items stay queued for the next sync, with the reason kept on the item
+      for (const { item, error } of failed) {
+        await db.outbox.update(item.id, { attempts: (item.attempts || 0) + 1, last_error: error });
       }
 
       // Pull latest remote records
@@ -225,7 +255,7 @@ class SyncEngine {
         await recomputeAllAllocations();
       }
 
-      return { success: true, count: successfullySyncedIds.length };
+      return { success: failed.length === 0, count: synced.length, failed: failed.length };
     } catch (err) {
       console.error('Sync failure:', err);
       return { success: false, error: err };
@@ -285,3 +315,53 @@ class SyncEngine {
 }
 
 export const syncEngine = new SyncEngine();
+
+/**
+ * Upload outbox items, batches first. One failure does not stop the rest;
+ * only items that depend on a failed one wait for the next sync:
+ *   - records of a batch whose upload failed (they would break its foreign key)
+ *   - later edits of a record whose earlier edit failed (order must be kept,
+ *     or an old value could overwrite a newer one)
+ *
+ * @param {object[]} items – outbox rows in queue order
+ * @param {(item) => Promise<object|null>} upsert – returns an error or null
+ * @returns {Promise<{synced: number[], failed: {item, error: string}[]}>}
+ */
+export async function pushOutbox(items, upsert) {
+  const ordered = [
+    ...items.filter((i) => i.table_name === 'batches'),
+    ...items.filter((i) => i.table_name !== 'batches')
+  ];
+  const failedBatchIds = new Set();
+  const failedRecords = new Set();
+  const synced = [];
+  const failed = [];
+
+  for (const item of ordered) {
+    const recordKey = `${item.table_name}:${item.record_id}`;
+    const parentId = item.table_name === 'batches' ? null : item.payload?.batch_id;
+
+    let error = null;
+    if (failedRecords.has(recordKey)) {
+      error = 'Waiting for an earlier change to this record to upload.';
+    } else if (parentId && failedBatchIds.has(parentId)) {
+      error = 'Waiting for its batch to upload.';
+    } else {
+      try {
+        const result = await upsert(item);
+        if (result) error = result.message || String(result);
+      } catch (err) {
+        error = err?.message || String(err);
+      }
+    }
+
+    if (error) {
+      failed.push({ item, error });
+      failedRecords.add(recordKey);
+      if (item.table_name === 'batches') failedBatchIds.add(item.record_id);
+    } else {
+      synced.push(item.id);
+    }
+  }
+  return { synced, failed };
+}

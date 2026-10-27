@@ -1,6 +1,7 @@
 import { db } from '../db/dexie.js';
 import { syncEngine } from './syncEngine.js';
 import { DEMO_USER_ID } from '../db/seed.js';
+import { AuthService } from './auth.js';
 import { recomputeAllocations, recomputeAllocationsForExpenseIds, recomputeAllAllocations } from './allocationService.js';
 import { computeAllocationsForExpense } from './allocationEngine.js';
 
@@ -114,7 +115,8 @@ export const Repository = {
     // No single-batch guard — multiple open batches are allowed
     const batch = {
       batch_id: crypto.randomUUID(),
-      user_id: user_id || DEMO_USER_ID,
+      // Supabase only accepts batches owned by a real auth user (batch_user_id_fkey)
+      user_id: user_id || AuthService.getUser()?.id || DEMO_USER_ID,
       batch_name,
       start_date,
       end_date: null,

@@ -98,6 +98,10 @@ export function attachLoginListeners(container, onLoginSuccess) {
   });
 
   cloudBtn?.addEventListener('click', () => {
-    openSupabaseConfigModal();
+    // Re-render so the button and placeholders show the new connection state
+    openSupabaseConfigModal(() => {
+      container.innerHTML = renderLogin();
+      attachLoginListeners(container, onLoginSuccess);
+    });
   });
 }

@@ -1,7 +1,21 @@
+import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js';
 import { DEMO_USER_ID } from '../db/seed.js';
 
 let currentUser = null;
+
+// How long start-up waits for Supabase before opening a saved login offline
+const OFFLINE_LOGIN_WAIT_MS = 3000;
+
+/** The user of the login supabase-js saved in localStorage (kept until logout). */
+function savedSupabaseUser(supabase) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(supabase.auth.storageKey) || 'null');
+    return saved?.refresh_token && saved.user?.id ? saved.user : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 export const AuthService = {
   async init() {
@@ -17,13 +31,30 @@ export const AuthService = {
     if (isSupabaseConfigured()) {
       const supabase = getSupabase();
       if (supabase) {
-        const { data: { session } } = await supabase.auth.getSession();
+        const saved = savedSupabaseUser(supabase);
+        // With an expired access token and no server, getSession() keeps retrying
+        // the renewal for ~30 s; don't keep the app blank that long.
+        const result = !saved
+          ? await supabase.auth.getSession()
+          : typeof navigator !== 'undefined' && !navigator.onLine
+            ? { offline: true }
+            : await Promise.race([
+                supabase.auth.getSession(),
+                new Promise((resolve) => setTimeout(() => resolve({ offline: true }), OFFLINE_LOGIN_WAIT_MS))
+              ]);
+
+        const session = result.data?.session;
         if (session?.user) {
           currentUser = {
             id: session.user.id,
             email: session.user.email,
             isDemo: false
           };
+        } else if (saved && (result.offline || isAuthRetryableFetchError(result.error))) {
+          // Offline: the login can't be renewed until the server is reachable,
+          // but it is still saved on this device. Open the local records;
+          // supabase-js renews the login by itself once the server is back.
+          currentUser = { id: saved.id, email: saved.email, isDemo: false, offline: true };
         }
       }
     }
