@@ -50,7 +50,7 @@ export function renderScanActions(importState) {
       📷 Scan logbook${unavailableReason ? ' <span class="scan-status">· AI off</span>' : ''}${waiting > 0 ? ` <span class="text-mut">(${waiting} waiting)</span>` : ''}
       <input type="file" id="input-scan-logbook" accept="image/*" capture="environment" hidden />
     </label>
-    <label class="btn-action scan-btn" title="Add logs from an Excel (.xlsx), CSV or PDF file, or a photo; you review them before anything is saved">
+    <label class="btn-action scan-btn" title="Add logs from an Excel (.xlsx, .xls), OpenDocument (.ods), CSV or PDF file, or a photo; you review them before anything is saved">
       📄 Import file
       <input type="file" id="input-import-file" accept="${IMPORT_ACCEPT}" hidden />
     </label>

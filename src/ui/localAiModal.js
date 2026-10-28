@@ -29,6 +29,7 @@ export function renderLocalAiModal(settings, installed = null, voiceModel = getV
     <label class="form-field">
       Ollama address
       <input id="input-llm-url" type="text" value="${escapeHtml(settings.url)}" placeholder="http://localhost:11434" />
+      <span class="text-mut ai-hint">On a phone or another computer, use <b>/ollama</b>: the app's own server passes it on to Ollama on the farm PC.</span>
     </label>
     ${modelField('input-llm-ocr', 'Reading model (vision)', 'Reads the photo into text. Example: glm-ocr', settings.ocrModel)}
     ${modelField('input-llm-text', 'Sorting model', 'Turns the text into entries. Example: qwen3.5:4b', settings.textModel)}

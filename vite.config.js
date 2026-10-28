@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import { VitePWA } from 'vite-plugin-pwa';
 
 // Cross-origin isolation lets the ONNX runtime use several CPU threads for
@@ -11,9 +12,27 @@ const ISOLATION_HEADERS = {
   'Cross-Origin-Embedder-Policy': 'credentialless'
 };
 
-export default defineConfig({
+// "/ollama" on the app's own server is passed to Ollama on this PC, so a phone
+// or another computer reaches it at the same origin as the app: no CORS setup
+// (OLLAMA_ORIGINS) and no http call from an https page. Ollama checks the
+// Origin header, so it is dropped; the request comes from this server.
+const OLLAMA_TARGET = process.env.OLLAMA_PROXY_TARGET || 'http://localhost:11434';
+const OLLAMA_PROXY = {
+  '/ollama': {
+    target: OLLAMA_TARGET,
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/ollama/, ''),
+    configure: (proxy) => proxy.on('proxyReq', (req) => req.removeHeader('origin'))
+  }
+};
+
+// `npm run dev:lan` / `npm run preview:lan` (mode "lan"): served on the local
+// network over https with a self-signed certificate, because phones only allow
+// the microphone on https pages. The phone shows a certificate warning once.
+export default defineConfig(({ mode }) => ({
   plugins: [
     tailwindcss(),
+    mode === 'lan' && basicSsl({ name: 'chickpence-lan' }),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192x192.svg', 'pwa-512x512.svg'],
@@ -59,15 +78,32 @@ export default defineConfig({
       }
     })
   ],
+  // Supabase and Dexie get their own chunks: they change less often than the
+  // app's code, so an app update does not download them again
+  build: {
+    // The two chunks near 500 kB are loaded only when used: the Whisper worker
+    // (voice typing) and SheetJS (importing .xls / .ods)
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (/[\\/]node_modules[\\/]@supabase[\\/]/.test(id)) return 'supabase';
+          if (/[\\/]node_modules[\\/]dexie[\\/]/.test(id)) return 'dexie';
+        }
+      }
+    }
+  },
   // The Whisper worker (voice typing) imports Transformers.js as an ES module
   worker: {
     format: 'es'
   },
   server: {
     port: 3000,
-    headers: ISOLATION_HEADERS
+    headers: ISOLATION_HEADERS,
+    proxy: OLLAMA_PROXY
   },
   preview: {
-    headers: ISOLATION_HEADERS
+    headers: ISOLATION_HEADERS,
+    proxy: OLLAMA_PROXY
   }
-});
+}));

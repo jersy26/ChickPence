@@ -167,10 +167,41 @@ export function buildBatchReport(batchData, expensesById = new Map()) {
 }
 
 /**
- * Build a report comparing many batches (History page export).
- * @param {object[]} batchDataList – array of { batch, feed, mortality, sales, allocations }
+ * The farm expenses themselves (not a batch's allocated share), oldest first.
+ * This is what restores a farm's expenses when the file is imported back.
+ * @param {object[]} expenses – expense rows ({ entry_date, feed_centavos, other_centavos })
  */
-export function buildBatchListReport(batchDataList) {
+export function buildFarmExpensesTable(expenses = []) {
+  return {
+    columns: [col('Date', COL.date, 12), col('Feed cost', COL.peso), col('Other cost', COL.peso), col('Total', COL.peso)],
+    rows: expenses
+      .filter((e) => !e.deleted_at)
+      .slice()
+      .sort((a, b) => (a.entry_date < b.entry_date ? -1 : a.entry_date > b.entry_date ? 1 : 0))
+      .map((e) => {
+        const feed = centavosToFloat(e.feed_centavos);
+        const other = centavosToFloat(e.other_centavos);
+        return [e.entry_date, feed, other, feed + other];
+      })
+  };
+}
+
+/** Report of every farm expense (Export → Farm expenses). */
+export function buildFarmExpensesReport(expenses) {
+  return {
+    title: 'Farm Expenses Report',
+    fileBase: 'ChickPence_Farm_Expenses',
+    sections: [{ name: 'Farm expenses', table: buildFarmExpensesTable(expenses) }]
+  };
+}
+
+/**
+ * Build a report comparing many batches (History page export). With
+ * expenses, Excel and PDF also get a "Farm expenses" sheet / section.
+ * @param {object[]} batchDataList – array of { batch, feed, mortality, sales, allocations }
+ * @param {object[]} [expenses]    – the farm expenses
+ */
+export function buildBatchListReport(batchDataList, expenses = null) {
   const rows = batchDataList.map(({ batch, feed, mortality, sales, allocations }) => {
     const m = calcBatchMetrics(batch, allocations, sales, mortality, feed);
     return [
@@ -212,7 +243,8 @@ export function buildBatchListReport(batchDataList) {
           ],
           rows
         }
-      }
+      },
+      ...(expenses ? [{ name: 'Farm expenses', table: buildFarmExpensesTable(expenses) }] : [])
     ]
   };
 }
@@ -514,6 +546,11 @@ export async function exportBatch(batchData, expensesById, format) {
   return exportReport(report, format, buildBatchLedger(report));
 }
 
-export async function exportBatchList(batchDataList, format) {
-  return exportReport(buildBatchListReport(batchDataList), format);
+/** CSV holds one table, so the whole-history CSV is the batches only. */
+export async function exportBatchList(batchDataList, format, expenses = null) {
+  return exportReport(buildBatchListReport(batchDataList, expenses), format);
+}
+
+export async function exportFarmExpenses(expenses, format) {
+  return exportReport(buildFarmExpensesReport(expenses), format);
 }

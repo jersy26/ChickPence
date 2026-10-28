@@ -1,6 +1,6 @@
 /**
  * fileImport.js
- * Turn an Excel (.xlsx), CSV or PDF file into draft log entries for the
+ * Turn an Excel (.xlsx, .xls), OpenDocument (.ods), CSV or PDF file into draft log entries for the
  * review modal. Photos (and scanned PDFs, page by page) go through the
  * logbook scan instead (aiParseService.js).
  *
@@ -17,10 +17,12 @@
 
 import { parseRecord, parseDate } from './logbookParser.js';
 
-export const IMPORT_ACCEPT = '.xlsx,.csv,.pdf,image/*';
+export const IMPORT_ACCEPT = '.xlsx,.xls,.ods,.csv,.pdf,image/*';
 const MAX_ROWS = 1000;
 
-/** 'image' | 'csv' | 'xlsx' | 'pdf' | 'old-spreadsheet' | 'unknown' */
+/**
+ * 'image' | 'csv' | 'xlsx' | 'pdf' | 'spreadsheet' (.xls, .ods) | 'old-spreadsheet' (.numbers) | 'unknown'
+ */
 export function fileKind(file) {
   const name = String(file?.name || '').toLowerCase();
   const type = String(file?.type || '');
@@ -28,7 +30,8 @@ export function fileKind(file) {
   if (name.endsWith('.csv') || type === 'text/csv') return 'csv';
   if (name.endsWith('.xlsx') || type.includes('spreadsheetml')) return 'xlsx';
   if (name.endsWith('.pdf') || type === 'application/pdf') return 'pdf';
-  if (/\.(xls|ods|numbers)$/.test(name)) return 'old-spreadsheet';
+  if (/\.(xls|ods)$/.test(name) || type === 'application/vnd.ms-excel' || type.includes('opendocument.spreadsheet')) return 'spreadsheet';
+  if (name.endsWith('.numbers')) return 'old-spreadsheet';
   return 'unknown';
 }
 
@@ -195,6 +198,9 @@ function sectionTitle(row) {
 
 const FEED_WORDS = /feed|patuka|pakain|sako|integra|starter|grower|finisher|booster/i;
 
+/** A sheet, section or file of farm expenses as entered (not a batch report's allocated shares) */
+const FARM_EXPENSES = /farm expenses?|gastos ng (farm|bukid)/i;
+
 /** One table row with a header → raw entry (the shape normalizeDrafts reads), 'skip', or null. */
 function rowToEntry(row, map, { contextType, today, fileBatch, reportShares }) {
   const get = (field) => {
@@ -278,8 +284,10 @@ export function batchFromFileName(fileName, batches = []) {
  */
 export function tablesToEntries(tables, { today, batches = [], fileName = '' }) {
   const fileBatch = batchFromFileName(fileName, batches);
-  // ChickPence's batch reports are named ChickPence_<batch>_<date>; the whole-history report has no entries
-  const reportShares = /^chickpence_/i.test(String(fileName));
+  // ChickPence's batch reports are named ChickPence_<batch>_<date> and list expense shares. The farm
+  // expenses export (ChickPence_Farm_Expenses_…, or the "Farm expenses" sheet / section of the
+  // whole-history report) lists the expenses themselves.
+  const reportShares = /^chickpence_/i.test(String(fileName)) && !FARM_EXPENSES.test(String(fileName).replace(/_/g, ' '));
   const entries = [];
   const unread = [];
   let skipped = 0;
@@ -290,6 +298,7 @@ export function tablesToEntries(tables, { today, batches = [], fileName = '' }) 
     const sheetType = typeFromName(table.name);
     if (sheetType === 'skip') continue; // a Summary sheet holds totals, not entries
     let contextType = sheetType;
+    let farmExpenses = FARM_EXPENSES.test(table.name || '');
     let map = null;
     let previousDate = null;
 
@@ -300,12 +309,18 @@ export function tablesToEntries(tables, { today, batches = [], fileName = '' }) 
 
       const header = headerMap(row);
       if (header) { map = header; continue; }
+      // "Okt 27 Batch 2026-09 patay 4" in one cell names a type too, but it is an entry, not a section title
       const title = sectionTitle(row);
-      if (title) { contextType = title; map = null; continue; }
+      if (title && !(/\d/.test(source) && parseRecord(source, { today, batches, previousDate }))) {
+        contextType = title;
+        farmExpenses = FARM_EXPENSES.test(source);
+        map = null;
+        continue;
+      }
       if (contextType === 'skip') continue;
 
       if (map) {
-        const entry = rowToEntry(row, map, { contextType, today, fileBatch, reportShares });
+        const entry = rowToEntry(row, map, { contextType, today, fileBatch, reportShares: reportShares && !farmExpenses });
         if (entry === 'skip') { skipped++; continue; }
         if (entry === 'share') { shares++; continue; }
         if (entry) {
@@ -335,7 +350,7 @@ export function tablesToEntries(tables, { today, batches = [], fileName = '' }) 
 export function importNotes({ unread = [], skipped = 0, shares = 0 }) {
   const notes = [];
   if (shares) {
-    notes.push(`${shares} expense ${shares === 1 ? 'row was' : 'rows were'} left out: a ChickPence batch report lists each batch's share of an expense, not the whole expense. Add farm expenses with + Add New Log.`);
+    notes.push(`${shares} expense ${shares === 1 ? 'row was' : 'rows were'} left out: a ChickPence batch report lists each batch's share of an expense, not the whole expense. To bring the expenses over, use Export → Farm expenses and import that file.`);
   }
   if (unread.length) {
     const shown = unread.slice(0, 5).map((t) => `"${t.length > 60 ? `${t.slice(0, 57)}…` : t}"`).join(', ');
@@ -459,7 +474,35 @@ async function pdfPagesAsImages(doc) {
 }
 
 /**
- * Read an .xlsx, .csv or .pdf file.
+ * A SheetJS workbook (.xls, .ods) → tables like read-excel-file gives: one per
+ * sheet, date cells as UTC-midnight Dates, everything else as its raw value.
+ */
+export function sheetJsTables(XLSX, workbook) {
+  return workbook.SheetNames.map((name) => {
+    const ws = workbook.Sheets[name];
+    const rows = [];
+    if (ws?.['!ref']) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let r = range.s.r; r <= Math.min(range.e.r, range.s.r + MAX_ROWS); r++) {
+        const row = [];
+        for (let c = range.s.c; c <= range.e.c; c++) row.push(sheetJsValue(XLSX, ws[XLSX.utils.encode_cell({ r, c })]));
+        rows.push(row);
+      }
+    }
+    return { name, rows };
+  });
+}
+
+function sheetJsValue(XLSX, cell) {
+  if (!cell || cell.t === 'z' || cell.t === 'e') return null;
+  if (cell.t === 'n' && cell.z && XLSX.SSF.is_date(cell.z)) {
+    return new Date(Date.UTC(1899, 11, 30) + Math.round(cell.v * 86400000)); // date serial, time of day dropped by isoUtc
+  }
+  return cell.v ?? null;
+}
+
+/**
+ * Read an .xlsx, .xls, .ods, .csv or .pdf file.
  * Returns { entries, unread, skipped } or, for a scanned PDF, { pageImages: Blob[], pageCount }.
  */
 export async function readLogFile(file, { today, batches = [] }) {
@@ -471,6 +514,11 @@ export async function readLogFile(file, { today, batches = [] }) {
     const { default: readExcelFile } = await import('read-excel-file/universal');
     const sheets = await readExcelFile(file);
     tables = sheets.map((s) => ({ name: s.sheet, rows: s.data }));
+  } else if (kind === 'spreadsheet') {
+    // SheetJS is only loaded for the older formats read-excel-file cannot read
+    const XLSX = await import('xlsx');
+    // cellNF keeps each cell's number format, which is how a date cell is told apart from a number
+    tables = sheetJsTables(XLSX, XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', cellNF: true }));
   } else if (kind === 'pdf') {
     const pdfjs = await loadPdfjs();
     const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
@@ -480,7 +528,7 @@ export async function readLogFile(file, { today, batches = [] }) {
     }
     tables = [{ name: '', rows }];
   } else {
-    throw new Error('Choose an Excel (.xlsx), CSV or PDF file, or a photo.');
+    throw new Error('Choose an Excel (.xlsx, .xls), OpenDocument (.ods), CSV or PDF file, or a photo.');
   }
   return tablesToEntries(tables, { today, batches, fileName: file.name });
 }

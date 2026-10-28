@@ -13,10 +13,14 @@ import {
   importNotes,
   markDuplicates,
   textItemsToRows,
-  pdfRows
+  pdfRows,
+  sheetJsTables
 } from '../src/services/fileImport.js';
+import * as XLSX from 'xlsx';
 import { normalizeDrafts } from '../src/services/aiParseService.js';
-import { buildBatchReport, buildBatchLedger, buildXlsxSheets, tableToCsv, renderReportBlob } from '../src/services/exportService.js';
+import {
+  buildBatchReport, buildBatchLedger, buildBatchListReport, buildFarmExpensesReport, buildXlsxSheets, tableToCsv, renderReportBlob
+} from '../src/services/exportService.js';
 import { renderImportReviewModal } from '../src/ui/importReviewModal.js';
 
 const today = '2026-10-29';
@@ -56,7 +60,9 @@ describe('file kinds and cells', () => {
     expect(fileKind({ name: 'logs.csv' })).toBe('csv');
     expect(fileKind({ name: 'report.pdf' })).toBe('pdf');
     expect(fileKind({ name: 'IMG_1.jpg', type: 'image/jpeg' })).toBe('image');
-    expect(fileKind({ name: 'old.xls' })).toBe('old-spreadsheet');
+    expect(fileKind({ name: 'old.xls' })).toBe('spreadsheet');
+    expect(fileKind({ name: 'libre.ods' })).toBe('spreadsheet');
+    expect(fileKind({ name: 'mac.numbers' })).toBe('old-spreadsheet');
     expect(fileKind({ name: 'notes.docx' })).toBe('unknown');
   });
 
@@ -132,6 +138,46 @@ describe('ChickPence exports read back', () => {
   });
 });
 
+describe('farm expenses exported and read back', () => {
+  const expenses = [
+    { expense_id: 'e2', entry_date: '2026-10-27', feed_centavos: 0, other_centavos: 85000 },
+    { expense_id: 'e1', entry_date: '2026-10-26', feed_centavos: 1250050, other_centavos: 0 },
+    { expense_id: 'e3', entry_date: '2026-10-25', feed_centavos: 100, other_centavos: 100, deleted_at: '2026-10-26' }
+  ];
+  const expected = [
+    { type: 'expense', date: '2026-10-26', feed: 12500.5, other: 0 },
+    { type: 'expense', date: '2026-10-27', feed: 0, other: 850 }
+  ];
+  const historyName = 'ChickPence_Batch_History_2026-10-29';
+
+  it('Excel whole history: the Farm expenses sheet imports, the Batches sheet does not', async () => {
+    const buffer = await writeXlsxFile(buildXlsxSheets(buildBatchListReport([batchData], expenses))).toBuffer();
+    const sheets = await readExcelFile(new Blob([buffer]));
+    expect(sheets.map((s) => s.sheet)).toEqual(['Batches', 'Farm expenses']);
+    const result = tablesToEntries(sheets.map((s) => ({ name: s.sheet, rows: s.data })), { today, batches, fileName: `${historyName}.xlsx` });
+    expect(result.entries.map(pick)).toEqual(expected);
+    expect(result.shares).toBe(0);
+  });
+
+  it('PDF whole history: the Farm expenses section imports', async () => {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const blob = await renderReportBlob(buildBatchListReport([batchData], expenses), 'pdf');
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), useSystemFonts: true }).promise;
+    const result = tablesToEntries([{ name: '', rows: await pdfRows(doc) }], { today, batches, fileName: `${historyName}.pdf` });
+    expect(result.entries.map(pick)).toEqual(expected);
+    expect(result.shares).toBe(0);
+  }, 20000);
+
+  it('CSV of the farm expenses on their own', () => {
+    const report = buildFarmExpensesReport(expenses);
+    const result = tablesToEntries([{ name: '', rows: parseCsv(tableToCsv(report.sections[0].table)) }], {
+      today, batches, fileName: 'ChickPence_Farm_Expenses_2026-10-29.csv'
+    });
+    expect(result.entries.map(pick)).toEqual(expected);
+    expect(result.shares).toBe(0);
+  });
+});
+
 describe('files people make themselves', () => {
   it('a Filipino table with a Type column, batch column and one amount column', () => {
     const rows = parseCsv([
@@ -177,6 +223,36 @@ describe('files people make themselves', () => {
     ]);
     expect(result.unread).toEqual(['random note about the weather']);
     expect(importNotes(result)).toContain('1 line was not recognised: "random note about the weather"');
+  });
+
+  it.each(['xls', 'biff5', 'ods'])('an old Excel or OpenDocument file (%s) with real date cells', (bookType) => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Petsa', 'Batch', 'Patay'],
+      [new Date(Date.UTC(2026, 9, 26)), 'Batch 2026-09', 4],
+      [new Date(Date.UTC(2026, 9, 27)), 'Batch 2026-07', 2]
+    ], { cellDates: true, UTC: true });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Mortality');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Total deaths', 6]]), 'Summary');
+    const data = XLSX.write(wb, { bookType, type: 'array' });
+
+    const tables = sheetJsTables(XLSX, XLSX.read(new Uint8Array(data), { type: 'array', cellNF: true }));
+    expect(tables[0].rows[1][0]).toEqual(new Date(Date.UTC(2026, 9, 26))); // a date cell, not its serial number
+    const result = tablesToEntries(tables, { today, batches, fileName: `log.${bookType}` });
+    expect(result.entries.map(pick)).toEqual([
+      { type: 'mortality', date: '2026-10-26', batch: 'Batch 2026-09', count: 4 },
+      { type: 'mortality', date: '2026-10-27', batch: 'Batch 2026-07', count: 2 }
+    ]);
+  });
+
+  it('a one-cell logbook line with a type word is an entry, not a section title', () => {
+    const rows = parseCsv('Okt 27 Batch 2026-09 patay 4\ntatlong manok ang nawala sa batch 9 kahapon\nMortality\nDate,Deaths\n2026-10-28,2\n');
+    const result = tablesToEntries([{ name: '', rows }], { today, batches, fileName: 'test.csv' });
+    expect(result.entries.map(pick)).toEqual([
+      { type: 'mortality', date: '2026-10-27', batch: 'Batch 2026-09', count: 4 },
+      { type: 'mortality', date: '2026-10-28', count: 2 }
+    ]);
+    expect(result.unread).toEqual(['tatlong manok ang nawala sa batch 9 kahapon']);
   });
 
   it('rows without a date are kept but flagged', () => {

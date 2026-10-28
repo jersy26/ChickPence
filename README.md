@@ -29,7 +29,8 @@ An offline-first web app (PWA) for broiler farms: record expenses, feed, mortali
 - **Feed** (kg), **mortality** (deaths per day, running rate) and **sales** (buyer, heads, kg, price/kg) per batch.
 - **Dashboard** with open-batch KPIs, mortality warnings and a net profit trend for closed batches.
 - **History** and a read-only **Batch Summary** report per batch.
-- **Export** a detailed batch report or the whole history to **Excel, PDF or CSV**.
+- **Export** a detailed batch report, the whole history or the farm expenses to **Excel, PDF or CSV**.
+- **Import file:** bring logs in from Excel (.xlsx, .xls), OpenDocument (.ods), CSV or PDF files, including ChickPence's own exports; the entries are reviewed before saving.
 - **Scan logbook:** take a photo of the paper logbook; a **local AI** (Ollama) reads it and drafts the entries for you to review. Nothing is saved until you confirm, and photos never leave the computer.
 - **Offline-first:** data lives in the browser (IndexedDB via Dexie) and syncs to **Supabase** (PostgreSQL + Auth) when configured and online. Without Supabase the app runs in **Demo Mode** with 8 sample batches.
 
@@ -194,37 +195,27 @@ You can use other models: any Ollama **vision** model for reading, any **chat** 
 
 ### Scanning from a phone or another computer
 
-By default Ollama only accepts requests from the same computer (`localhost`). To scan from a phone on the same Wi-Fi, on the computer that runs Ollama:
+Ollama stays as it is (only reachable from the farm PC). The app's own server passes `/ollama` on to it, so a phone talks to Ollama through the app's address: no `OLLAMA_HOST` / `OLLAMA_ORIGINS` setup.
 
-1. Set two environment variables, then **restart Ollama**:
-   - `OLLAMA_HOST=0.0.0.0` (listen on the network)
-   - `OLLAMA_ORIGINS=http://<this computer's IP>:3000` (allow the app's address)
+1. On the computer that runs Ollama, start the app on the network over **https** (phones allow the microphone only on https pages):
 
    ```bash
-   # Windows (PowerShell), then quit and reopen the Ollama app
-   setx OLLAMA_HOST 0.0.0.0
-   ```
-   ```bash
-   setx OLLAMA_ORIGINS http://192.168.1.10:3000
-   ```
-   ```bash
-   # macOS
-   launchctl setenv OLLAMA_HOST 0.0.0.0
-   ```
-   ```bash
-   launchctl setenv OLLAMA_ORIGINS http://192.168.1.10:3000
-   ```
-   On Linux, add both to the `ollama` systemd service (`sudo systemctl edit ollama`) as `Environment=` lines, then `sudo systemctl restart ollama`.
-
-2. Start the app on the network:
-
-   ```bash
-   npm run dev -- --host
+   npm run dev:lan
    ```
 
-3. On the phone, open `http://<this computer's IP>:3000`, then in **⚙** set the Ollama address to `http://<this computer's IP>:11434`.
+   or, for the production build (`npm run build` first):
 
-The app must be opened over **http** for this. Browsers block an **https** page from calling `http://<IP>:11434`.
+   ```bash
+   npm run preview:lan
+   ```
+
+2. On the phone (same Wi-Fi), open the `https://<this computer's IP>:3000` address the command prints (`:4173` for `preview:lan`). The certificate is self-signed, so the browser warns once: choose **Advanced → Proceed**.
+
+3. The Ollama address is `/ollama` by default when the app is opened from another device (check it in **⚙**).
+
+Plain `npm run dev -- --host` (http) also works for scanning, but then the microphone is hidden on the phone.
+
+The `/ollama` pass-through exists only in `npm run dev` / `npm run preview`. If you host the built app elsewhere, give that server the same pass-through (to `http://localhost:11434`, without the `Origin` header), or set `OLLAMA_HOST` and `OLLAMA_ORIGINS` on the farm PC and use `http://<IP>:11434`.
 
 ---
 
@@ -362,6 +353,7 @@ Vite reads `.env` only when the dev server starts, so restart `npm run dev` afte
 | `npm test` | Run the unit tests once (Vitest) |
 | `npm run build` | Production build into `dist/` (includes the service worker for offline use) |
 | `npm run preview` | Serve the production build locally on http://localhost:4173 |
+| `npm run dev:lan` / `npm run preview:lan` | Same, on the local network over https (self-signed certificate) for phones |
 
 The offline service worker is only active in the production build, so test offline behaviour with `npm run build` then `npm run preview`.
 
@@ -377,18 +369,23 @@ Installed by `npm install` from `package.json`. Versions are the ones in `packag
 |---|---|---|
 | `dexie` | 4.4 | IndexedDB database in the browser (offline storage, sync outbox, scan queue) |
 | `@supabase/supabase-js` | 2.117 | Supabase Auth and PostgreSQL sync |
-| `chart.js` | 4.5 | Dashboard charts |
+| `chart.js` | 4.5 | Dashboard charts (loaded with the Dashboard chart) |
 | `write-excel-file` | 4.1 | Excel (.xlsx) export |
 | `jspdf` | 4.2 | PDF export |
 | `jspdf-autotable` | 5.0 | Tables in PDF export |
+| `read-excel-file` | 9.3 | Importing Excel (.xlsx) files |
+| `xlsx` (SheetJS CE, from cdn.sheetjs.com) | 0.20.3 | Importing old Excel (.xls) and OpenDocument (.ods) files |
+| `pdfjs-dist` | 6.4 | Importing PDF files |
+| `@huggingface/transformers` | 4.3.1 | Whisper voice typing in the browser |
 
-The export libraries are loaded only when you export, so the main app stays small.
+The export, import and voice libraries are loaded only when used, so the main app stays small. SheetJS comes from its own CDN tarball because the npm `xlsx` package is no longer updated.
 
 **Development**
 
 | Package | Version | Used for |
 |---|---|---|
 | `vite` | 6.4 | Dev server and bundler |
+| `@vitejs/plugin-basic-ssl` | 2.3 | Self-signed https for `dev:lan` / `preview:lan` |
 | `vite-plugin-pwa` + `workbox-window` | 0.21 / 7.3 | Service worker and web app manifest (offline PWA) |
 | `tailwindcss` + `@tailwindcss/vite` | 4.3 | CSS framework |
 | `postcss`, `autoprefixer` | 8.5 / 10.4 | CSS processing |
@@ -447,7 +444,7 @@ ChickPence/
 | Port 3000 already in use | Vite uses the next free port; check the terminal for the address |
 | **Scan logbook** shows **· AI off** | Hover to see the reason. Start the Ollama app (or `ollama serve`), check `ollama list` shows both models, then click **⚙ → Test connection** |
 | Scan is very slow | Normal on a CPU-only PC (about 2 min per page with 8 GB RAM). Close other apps; the first scan after start-up also loads the model |
-| "Cannot reach the local AI" from a phone | Set `OLLAMA_HOST` and `OLLAMA_ORIGINS` and open the app over `http` (see [Scanning from a phone](#scanning-from-a-phone-or-another-computer)) |
+| "Cannot reach the local AI" from a phone | Start the app with `npm run dev:lan` and set the Ollama address in ⚙ to `/ollama` (see [Scanning from a phone](#scanning-from-a-phone-or-another-computer)) |
 | Login says invalid credentials with Supabase | Create the user in Supabase (Studio → Authentication → Add user, with Auto Confirm) |
 | `npx supabase start` fails | Make sure the Docker engine is running (`docker info` must not show an error). If downloads stop with *"unexpected EOF"*, Docker ran out of memory: use the `-x ...` command from Option A step 3 and run it again |
 | Feed logs never finish syncing (`Could not find the 'quantity_g' column`) | Run `20261028000000_v3_feed_grams.sql` on the database (`npx supabase migration up` locally, SQL Editor when hosted) |

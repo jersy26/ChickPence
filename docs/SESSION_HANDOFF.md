@@ -1,31 +1,28 @@
 # ChickPence — Session Handoff
 
-**Date:** 2026-10-29
-**Branch:** `main` at `dac4abe` (last merge: `fix/open-items`). **The 2026-10-29 fixes (section 8) are not pushed yet**; everything before them is on GitHub.
-**Tests:** 180 passing (`npm test`)
+**Date:** 2026-10-29 (second session)
+**Branch:** `main` (last merge: `fix/todo-items`), pushed to GitHub.
+**Tests:** 189 passing (`npm test`); the production build passes.
 
-> **Next session: start with section 0 (To do).**
+> **Next session: start with section 0 (To do).** The code to-do list is finished (section 9).
 
 ---
 
 ## 0. To do
 
-### Not finished (code work, in this order)
-1. **Push `main`** (the 2026-10-29 fixes and this handoff). Run `npm test` first.
-2. **Test "let the local AI read unrecognised lines" in the app with Ollama.** Only unit-tested; the Edge test script failed on its own bug (it used `process` inside page code). Steps: start Ollama, import a CSV with the lines `Okt 27 Batch 2026-09 patay 4` and `tatlong manok ang nawala sa batch 9 kahapon`, accept the prompt, wait a few minutes, check that the review modal shows both rows. Code: `readUnrecognisedWithAi` in `src/main.js`, `extractFromRecords` in `src/services/localLlm.js`.
-3. **Import `.xls` and `.ods`.** `read-excel-file` reads only `.xlsx`. Option: SheetJS Community Edition from its own CDN tarball (`https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`; the npm `xlsx` package is frozen with advisories), lazy-loaded only for these files. Today `fileKind` returns `'old-spreadsheet'` and the user is told to save as `.xlsx` or CSV.
-4. **Export the farm expenses themselves** (not the per-batch shares), e.g. a "Farm expenses" sheet or section in the whole-history export, so a farm can be restored from exports. Then let `fileImport.js` import that section; today expense rows in `ChickPence_*` files are skipped as shares (`reportShares`), so the detection must tell the two apart.
-5. **Phones and Ollama.** Add `server.proxy` and `preview.proxy` `'/ollama' → http://localhost:11434` in `vite.config.js` and allow `/ollama` as the Ollama address (same origin: no CORS, no mixed content). Add an https option for the LAN (e.g. `@vitejs/plugin-basic-ssl` behind an env flag), because phones allow the microphone only on https. Keep the COOP/COEP headers.
-6. **`npm audit fix`** (without `--force`) for the dev-tool advisories, then run the tests and the build.
-7. **Split the main bundle** (~628 KB): lazy-load Chart.js on the Dashboard and/or use `build.rollupOptions.output.manualChunks` for Supabase, Dexie and Chart.js.
+### Not finished (code work)
+- Nothing left from the previous list; see section 9 for what was done.
+- Optional: try `npm run dev:lan` from a real phone (only checked with curl on this PC: https page, `/ollama` through the proxy, COOP/COEP headers).
 
 ### Needs the user (cannot be done from here)
 - **Speak into a real microphone** in Chrome or Edge on the farm PC, in Filipino and Taglish, ideally in the shed. All voice tests used text-to-speech recordings.
-- **Hosting:** whatever serves the built app must send `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: credentialless`, or Whisper runs about 5× slower.
+- **Hosting:** whatever serves the built app must send `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: credentialless`, or Whisper runs about 5× slower. For phones it must also pass `/ollama` on to Ollama on the farm PC (as `vite.config.js` does), or the Ollama address must be set by hand.
 
 ### Known limits (no fix planned)
 - AI suggestion wording is sometimes generic (small model); the numbers and the better/worse direction come from code.
 - Whisper sometimes drops part of a buyer's name ("aling" for "Aling Nena"); the review form catches it.
+- `npm audit` still lists 4 low advisories (`deepmerge` via `vite-plugin-pwa` → `workbox-build`); the only offered fix is `--force`, which downgrades the PWA plugin to 0.2.1.
+- `.numbers` (Apple Numbers) files are not imported; the user is told to export as `.xlsx` or CSV.
 
 ---
 
@@ -41,7 +38,8 @@ ChickPence is mainly a reporting system, so we are adding these features:
 | 3b | Voice privacy: Web Speech (sent audio to Google/Microsoft) replaced by Whisper running in the browser | ✅ Done, merged; audio never leaves the device |
 | 4 | AI suggestions (local LLM) | ✅ Done, merged, tested in the app with Ollama on this PC |
 | 5 | Import logs from a file (Excel, CSV, PDF, photo) | ✅ Done, merged, tested in the app with sample files |
-| — | Open-item fixes (2026-10-29): ₱ in PDFs, suggestions setting, Sync screen, AI for unrecognised import lines | ✅ Merged, **not pushed** (section 8) |
+| — | Open-item fixes (2026-10-29): ₱ in PDFs, suggestions setting, Sync screen, AI for unrecognised import lines | ✅ Merged, pushed (section 8) |
+| — | To-do list (2026-10-29, second session): AI import tested with Ollama, .xls/.ods, farm expenses export, phones via /ollama + https, audit, bundle split | ✅ Merged, pushed (section 9) |
 
 ### Architecture (updated: local LLM, no cloud AI)
 
@@ -149,7 +147,7 @@ Local branches `feature/export-reports` and `feature/export-modal` still exist (
 - **AI text is HTML-escaped** before it goes into the modal.
 - **"Today" comes from the client in local time,** so "kahapon" resolves correctly before 8 AM PH time.
 - `import_jobs.status`: `queued` → `ready` (drafts stored, photo dropped) or `failed` (photo kept for retry). A job is deleted once its drafts are saved or discarded.
-- **CORS:** Ollama accepts `http://localhost:*` by default, so the dev server works as is. A phone or another computer reaching the farm PC needs `OLLAMA_HOST=0.0.0.0` and `OLLAMA_ORIGINS=<app origin>` set on that PC, and the app must be served over plain `http` on the LAN (browsers block an `https` page from calling `http://<LAN IP>:11434`).
+- **CORS:** Ollama accepts `http://localhost:*` by default, so the dev server works as is. Since section 9, a phone or another computer goes through the app's own `/ollama` pass-through (no `OLLAMA_HOST` / `OLLAMA_ORIGINS`, works from an `https` page).
 - The PC is short on memory: with the browser open only ~250–750 MB stay free, so the first scan after start-up is slower while the model loads.
 - The Claude Edge Function (`supabase/functions/ai-parse`) was deleted; no API key is needed any more.
 
@@ -233,7 +231,7 @@ Local branches `feature/ai-parse` and `feature/local-llm` still exist (not pushe
 
 ### Still open
 - **A real person speaking into a real microphone is still untested**, especially in a noisy shed. All tests used text-to-speech recordings. whisper-base in ⚙ is faster but much weaker in Filipino.
-- **Phones:** the microphone only works on `https` pages (or `localhost`). Voice itself runs on the phone, but a sentence the rules cannot read falls back to Ollama on the farm PC, which an `https` page cannot call over plain `http` (section 3). A phone may also be too slow for whisper-small.
+- **Phones:** the microphone only works on `https` pages (or `localhost`). Fixed in section 9: `npm run dev:lan` serves https on the LAN and the Ollama fallback goes through `/ollama`. Not tried on a real phone yet; a phone may also be too slow for whisper-small.
 
 ### Commits (on `main`)
 ```
@@ -318,9 +316,9 @@ Local branch `feature/voice-input` still exists (not pushed; already merged).
 - In the app (Edge over DevTools, real file input): a Filipino-header workbook (5 entries correct), a CSV with a Type column (3 correct, 1 empty row skipped), a ChickPence PDF report (3 correct, expense share left out), saving 5 entries (7 s) and importing the same file again (all 5 marked Already saved), and a scanned PDF (page queued for the photo scan). The modal fits a 390 px phone screen.
 
 ### Still open
-- The expense rows of a ChickPence batch report cannot be imported (they are shares). Restoring a whole farm from exports would need an export of the farm expenses themselves.
-- `.xls` (Excel 97–2003) and `.ods` are not read; save as `.xlsx` or CSV.
-- Fixed 2026-10-29: the app offers to let the local AI read unrecognised lines (section 8; not yet tested with Ollama in the app, To do item 2).
+- The expense rows of a ChickPence batch report still cannot be imported (they are shares), but the farm expenses now have their own export that imports back (section 9).
+- Fixed in section 9: `.xls` and `.ods` are read.
+- Fixed 2026-10-29: the app offers to let the local AI read unrecognised lines (section 8; tested with Ollama in section 9).
 
 ---
 
@@ -375,8 +373,9 @@ Local branch `feature/local-supabase-sync` still exists (not pushed; already mer
 - **Supabase:** local only, see section 6. Docker Desktop must be running before `npx supabase start`.
 - **Ollama** is installed and running on this PC with glm-ocr, qwen3.5:4b, qwen2.5:3b, qwen2.5:1.5b, llama3.2:3b, phi4-mini and nomic-embed-text.
 - An old stash (`stash@{0}`, from before the multi-batch work) still exists locally; it was left alone.
-- `npm audit` reports advisories in existing dev tooling (vitest, vite deps). See To do, item 6.
-- Main JS chunk is ~628 KB (Chart.js, Supabase, Dexie). See To do, item 7.
+- `npm audit`: 4 low advisories left (section 0, Known limits).
+- Main JS chunk is 176 KB; Chart.js, Supabase and Dexie are separate chunks (section 9).
+- The dev server reloads the page when `src/main.js` changes, which cancels a running scan or AI import; run long in-app tests on `npm run build` + `vite preview` (`.claude/launch.json` → `preview`). After a new build, the preview tab may still serve the old app from the service worker: unregister it or reload twice.
 
 ---
 
@@ -387,6 +386,22 @@ Local branch `feature/local-supabase-sync` still exists (not pushed; already mer
 | `6cb8ff6` | **₱ in PDF reports.** `src/assets/fonts/notoSansPdf.js` holds Noto Sans Regular and Bold (SIL OFL, licence in `OFL-NotoSans.txt`) as base64: static instances (wght 400 and 700) of Google Fonts' variable `NotoSans[wdth,wght].ttf`, trimmed with `subset-font` to Basic Latin, Latin-1 and ₱ – — ‘ ’ “ ” • … · × € (about 36 KB each). Lazy-loaded with jsPDF; `formatForText` writes `₱1,234.50`. Poppins and Fira Sans have no ₱; Lato has one but a Reserved Font Name, so a trimmed copy is not allowed. To regenerate: `subset-font` with `variationAxes: { wght, wdth: 100 }`. Checked by rendering a report page. |
 | `942d5c9` | **AI suggestions setting.** ⚙ Local AI settings → "AI suggestions": automatic (default), only when tapping **Write suggestions** (card status `paused`; the model never starts by itself), or off (card hidden). localStorage `chickpence_ai_suggestions`; `getSuggestionsMode` / `setSuggestionsMode` in `insightsService.js`. |
 | `057dfce` | **Sync status and Sync screen.** The sidebar status line was lost in the redesign (`renderShell` built it but never showed it). It is back (`renderSyncStatus`: "⚠ N could not upload", "Offline · N waiting", "N waiting to upload", "All synced"), and the desktop sidebar is sticky so it stays in view. Tapping it opens `src/ui/syncProblemsModal.js`: each refused change with the server's reason and attempt count, **Try again now**, and **Discard this change** (`discardChange` in `syncEngine.js`: removes its queued uploads and the local record; a batch takes its waiting records with it; the next download restores the server's version if one exists; cost sharing is recomputed). Checked in Edge on desktop and phone width. |
-| `d3b560c` | **AI for unrecognised import lines.** After a file import, if some lines were not recognised and the local AI is ready, a confirm asks to let it read them (at most 40, progress window with Cancel). `extractFromRecords` keeps each row as its own record (`extractEntries` joins lines that do not start with a date). **Not yet tested with Ollama in the app** (To do, item 2). |
+| `d3b560c` | **AI for unrecognised import lines.** After a file import, if some lines were not recognised and the local AI is ready, a confirm asks to let it read them (at most 40, progress window with Cancel). `extractFromRecords` keeps each row as its own record (`extractEntries` joins lines that do not start with a date). Tested with Ollama in section 9. |
 
 Tests: 180 (new: suggestion modes and the paused card, discard and the Sync screen, `extractFromRecords`). The production build passes.
+
+---
+
+## 9. Done: the to-do list (2026-10-29, second session)
+
+Branch `fix/todo-items`, merged into `main` and pushed. Tests: 189.
+
+| Commit | What changed |
+|---|---|
+| — | **Pushed `main`** with the section 8 fixes (180 tests passed first). |
+| `2aa5789` | **AI import tested with Ollama, and a bug it found.** On the production build (`vite preview`), Demo Mode, a CSV with `Okt 27 Batch 2026-09 patay 4` and `tatlong manok ang nawala sa batch 9 kahapon`: the prompt appeared for the second line, qwen3.5:4b read it in **4 min 19 s** (Mortality, Batch 2026-09, yesterday, 3). But the first line was missing: alone in a cell, it names a type ("patay"), so it was taken as a "Mortality" section title and dropped. Now a one-cell row that the logbook rules can read (and that has a digit) is an entry. The prompt also says "read it" for one line. |
+| `7a98b57`, `502d43e` | **`.xls` and `.ods` import.** SheetJS CE 0.20.3 from `cdn.sheetjs.com` (in `package.json` as the tarball URL), lazy-loaded only for these files (`fileKind` → `'spreadsheet'`). `sheetJsTables` turns each sheet into rows like read-excel-file; `XLSX.read(..., { cellNF: true })` keeps number formats so date cells become UTC-midnight `Date`s (without it they arrive as serial numbers). `.numbers` still gets "export as .xlsx or CSV". Unit tests write real `.xls` (BIFF8 and BIFF5) and `.ods` files; checked in the app with an `.xls` and an `.ods` made in the browser. |
+| `f313456` | **Farm expenses export and import.** Export has a third choice, **Farm expenses** (`buildFarmExpensesReport`, file `ChickPence_Farm_Expenses_<date>`): date, feed cost, other cost, total, as entered. The whole-history Excel and PDF get a **Farm expenses** sheet / section too (`buildBatchListReport(list, expenses)`); its CSV stays one row per batch (CSV is one table, and the hint says so). Import: a sheet, section title or file name matching `FARM_EXPENSES` (`farm expenses`, `gastos ng farm/bukid`) is read as real expenses, so `reportShares` no longer skips them; batch reports' shares are still skipped. Round trips tested for Excel, PDF and CSV. |
+| `af5ea67` | **Phones and Ollama.** `vite.config.js`: `server.proxy` and `preview.proxy` pass `/ollama` to `http://localhost:11434` (or `OLLAMA_PROXY_TARGET`), dropping the `Origin` header (Ollama answers 403 to a LAN origin otherwise). `defaultOllamaUrl()`: `http://localhost:11434` on the farm PC, `/ollama` when the app is opened from another device; ⚙ explains it. `npm run dev:lan` / `preview:lan` (`--host --mode lan`) add `@vitejs/plugin-basic-ssl` (self-signed https) so phones allow the microphone. COOP/COEP headers unchanged. Checked with curl: LAN origin direct to Ollama 403, via `/ollama` 200, `dev:lan` https page 200 with both headers, `/ollama` over https 200. Not tried from a real phone. |
+| `1de5c32` | **`npm audit fix`** (no `--force`): vite 6.4.3 → 6.4.5 and other dev-tool fixes; 10 advisories → 4 low (section 0). Tests and build pass. |
+| `34ba117` | **Bundle split.** Chart.js is loaded by `loadChart()` when the Dashboard draws its chart (own 153 KB chunk, precached), with a guard for a redraw during loading; `manualChunks` puts Supabase (227 KB) and Dexie (97 KB) in their own chunks. Main chunk 654 KB → **176 KB**. `chunkSizeWarningLimit: 600` because the two remaining big chunks are lazy (Whisper worker 549 KB, SheetJS 488 KB). Chart checked in the production build. |
