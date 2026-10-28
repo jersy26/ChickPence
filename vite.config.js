@@ -78,6 +78,21 @@ export default defineConfig(({ mode }) => ({
       }
     })
   ],
+  // Supabase and Dexie get their own chunks: they change less often than the
+  // app's code, so an app update does not download them again
+  build: {
+    // The two chunks near 500 kB are loaded only when used: the Whisper worker
+    // (voice typing) and SheetJS (importing .xls / .ods)
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (/[\\/]node_modules[\\/]@supabase[\\/]/.test(id)) return 'supabase';
+          if (/[\\/]node_modules[\\/]dexie[\\/]/.test(id)) return 'dexie';
+        }
+      }
+    }
+  },
   // The Whisper worker (voice typing) imports Transformers.js as an ES module
   worker: {
     format: 'es'

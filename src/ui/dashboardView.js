@@ -13,26 +13,23 @@ import { Repository } from '../services/repository.js';
 import { showToast } from './toast.js';
 import { renderBatchToggleIcon } from './batchesView.js';
 import { renderInsightsCard } from './insightsCard.js';
-import {
-  Chart,
-  LineController,
-  LineElement,
-  PointElement,
-  LinearScale,
-  CategoryScale,
-  Tooltip,
-  Filler
-} from 'chart.js';
 
-Chart.register(
-  LineController,
-  LineElement,
-  PointElement,
-  LinearScale,
-  CategoryScale,
-  Tooltip,
-  Filler
-);
+// Chart.js is only needed for the Dashboard's profit chart, so it is loaded
+// on first use instead of in the main bundle (precached for offline use).
+let chartModule = null;
+function loadChart() {
+  chartModule ??= import('chart.js').then(
+    ({ Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler }) => {
+      Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler);
+      return Chart;
+    },
+    (err) => {
+      chartModule = null; // try again on the next render
+      throw err;
+    }
+  );
+  return chartModule;
+}
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const CHART_FONT = "'Poppins', sans-serif";
@@ -200,24 +197,32 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
   `;
 }
 
-function renderDashboardCharts(container, closedBatchesWithData, onNavigate) {
+async function renderDashboardCharts(container, closedBatchesWithData, onNavigate) {
   if (lineChartInstance) {
     lineChartInstance.destroy();
     lineChartInstance = null;
   }
 
   const { allClosedSorted } = getDashboardChartData(closedBatchesWithData);
+  const lineCanvas = container.querySelector('#dash-line-chart');
+  if (!lineCanvas || !allClosedSorted.length) return;
 
+  let Chart;
+  try {
+    Chart = await loadChart();
+  } catch (err) {
+    console.error('Could not load the chart', err);
+    return;
+  }
   const accent = cssVar('--acc', '#c98a00');
   const bad = cssVar('--bad', '#b3261e');
   const mut = cssVar('--mut', '#77756e');
   const ln = cssVar('--ln', '#d6d3ca');
   const ink = cssVar('--ink', '#1f1f1c');
 
-
-
-  const lineCanvas = container.querySelector('#dash-line-chart');
-  if (lineCanvas && allClosedSorted.length) {
+  // The page may have been redrawn (or left) while Chart.js was loading
+  if (lineCanvas.isConnected) {
+    lineChartInstance?.destroy();
     const labels = allClosedSorted.map((item) => item.batch.batch_name.replace(/^Batch\s*/i, ''));
     const profits = allClosedSorted.map((item) => item.netProfit || 0);
 
@@ -334,5 +339,5 @@ export function attachDashboardListeners(
     onReload();
   });
 
-  renderDashboardCharts(container, closedBatchesData, onNavigate);
+  void renderDashboardCharts(container, closedBatchesData, onNavigate);
 }
