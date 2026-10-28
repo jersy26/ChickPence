@@ -3,7 +3,8 @@ import { AuthService } from './services/auth.js';
 import { Repository } from './services/repository.js';
 import { prepareLocalDataFor } from './db/localData.js';
 import { syncEngine } from './services/syncEngine.js';
-import { renderShell, attachShellListeners } from './ui/shell.js';
+import { renderShell, attachShellListeners, renderSyncStatus } from './ui/shell.js';
+import { openSyncProblemsModal } from './ui/syncProblemsModal.js';
 import { renderLogin, attachLoginListeners } from './ui/loginView.js';
 import { renderDashboard, attachDashboardListeners } from './ui/dashboardView.js';
 import { renderBatches, attachBatchesListeners } from './ui/batchesView.js';
@@ -16,10 +17,11 @@ import { db } from './db/dexie.js';
 import { showToast } from './ui/toast.js';
 import { openImportReviewModal, openScanProgressModal } from './ui/importReviewModal.js';
 import { openLocalAiModal } from './ui/localAiModal.js';
+import { extractFromRecords } from './services/localLlm.js';
 import { attachInsightsCard, replaceInsightsCard } from './ui/insightsCard.js';
 import { isVoiceModelCached } from './services/speechInput.js';
 import { fileKind, readLogFile, markDuplicates, importNotes } from './services/fileImport.js';
-import { buildDashboardFacts, buildBatchFacts, loadInsights, onInsightsChange } from './services/insightsService.js';
+import { buildDashboardFacts, buildBatchFacts, loadInsights, onInsightsChange, getSuggestionsMode } from './services/insightsService.js';
 import {
   localToday,
   aiUnavailableReason,
@@ -107,24 +109,28 @@ async function initApp() {
   await render();
 }
 
+/** Sync screen (sidebar status): waiting uploads and refused changes, which can be retried or discarded. */
+function openSync() {
+  openSyncProblemsModal({
+    load: async () => {
+      const [items, batches] = await Promise.all([db.outbox.orderBy('id').toArray(), db.batches.toArray()]);
+      return { items, online: syncEngine.isOnline(), batchNames: new Map(batches.map((b) => [b.batch_id, b.batch_name])) };
+    },
+    onRetry: () => syncEngine.syncNow(),
+    onDiscard: async (item) => {
+      const removed = await syncEngine.discard(item);
+      showToast(`Discarded ${removed === 1 ? 'the change' : `${removed} records`} from this device.`);
+      render();
+    }
+  });
+}
+
 function updateSyncIndicator() {
   const syncBox = document.getElementById('sidebar-sync-box');
   if (!syncBox) return;
 
-  const isOff = !state.syncStatus.online;
-  const pending = state.syncStatus.pending;
-
-  let syncHtml = '';
-  if (isOff) {
-    syncHtml = `<b>● Offline${pending ? ` · ${pending} pending sync` : ''}</b>`;
-  } else if (pending > 0) {
-    syncHtml = `<b>● ${pending} pending sync</b>`;
-  } else {
-    syncHtml = `<span class="ok">● All synced</span>`;
-  }
-
   const indicatorText = document.getElementById('sync-indicator-text');
-  if (indicatorText) indicatorText.innerHTML = syncHtml;
+  if (indicatorText) indicatorText.innerHTML = renderSyncStatus(state.syncStatus);
 
   const toggleNetBtn = document.getElementById('btn-toggle-net');
   if (toggleNetBtn) {
@@ -165,7 +171,7 @@ async function render() {
     const insights = await showInsights('dashboard', buildDashboardFacts(openBatchesData, closedBatchesData, localToday()));
     contentHtml = renderDashboard(openBatchesData, closedBatchesData, state.collapsedBatchIds, insights);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
-    attachShellListeners(appContainer, navigate, handleLogout, render);
+    attachShellListeners(appContainer, navigate, handleLogout, render, openSync);
     attachDashboardListeners(appContainer, navigate, render, state.collapsedBatchIds, openBatchesData, closedBatchesData);
     attachInsightsCard(appContainer, () => refreshInsightsCard({ force: true }));
 
@@ -195,7 +201,7 @@ async function render() {
     );
 
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
-    attachShellListeners(appContainer, navigate, handleLogout, render);
+    attachShellListeners(appContainer, navigate, handleLogout, render, openSync);
     attachBatchesListeners(
       appContainer,
       {
@@ -269,7 +275,7 @@ async function render() {
 
     contentHtml = renderHistory(batchesWithFullData, state.historySearch, state.historyStatus);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
-    attachShellListeners(appContainer, navigate, handleLogout, render);
+    attachShellListeners(appContainer, navigate, handleLogout, render, openSync);
     attachHistoryListeners(appContainer, navigate, (search, status) => {
       if (search !== null) state.historySearch = search;
       if (status !== null) state.historyStatus = status;
@@ -288,7 +294,7 @@ async function render() {
       : null;
     contentHtml = renderSummary(batchData, insights);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
-    attachShellListeners(appContainer, navigate, handleLogout, render);
+    attachShellListeners(appContainer, navigate, handleLogout, render, openSync);
     attachSummaryListeners(appContainer, navigate, batchData?.batch
       ? async () => openExport(await Repository.getAllBatches(), batchId)
       : null);
@@ -304,6 +310,7 @@ async function render() {
 
 /** Card state for the page being rendered; writes new suggestions in the background when the numbers changed. */
 async function showInsights(scope, facts) {
+  if (getSuggestionsMode() === 'off') return null; // the card is hidden (⚙ Local AI settings)
   state.insights = { scope, facts };
   return loadInsights(scope, facts, localToday());
 }
@@ -451,6 +458,9 @@ async function importLogFile(file, openBatches) {
     return render();
   }
 
+  let aiNotes = '';
+  if (result.unread.length) ({ result, aiNotes } = await readUnrecognisedWithAi(result, file.name, openBatches));
+
   const [expenses, feed, mortality, sales] = await Promise.all([
     db.expenses.toArray(), db.feed_logs.toArray(), db.mortality_logs.toArray(), db.sales.toArray()
   ]);
@@ -458,11 +468,48 @@ async function importLogFile(file, openBatches) {
   openImportReviewModal({
     drafts,
     openBatches,
-    notes: importNotes(result),
+    notes: [importNotes(result), aiNotes].filter(Boolean).join(' '),
     fileName: file.name,
     onSaved: () => render(),
     onDiscard: () => render()
   });
+}
+
+const MAX_AI_LINES = 40; // the CPU model needs about half a minute per line
+
+/**
+ * Offer to let the local AI read the lines the import rules did not
+ * recognise. Returns the result with those entries added (they are drafts
+ * like the rest), and a note on what the AI could not read.
+ */
+async function readUnrecognisedWithAi(result, fileName, openBatches) {
+  if (await aiUnavailableReason()) return { result, aiNotes: '' };
+  const lines = result.unread.slice(0, MAX_AI_LINES);
+  const ask = `${result.unread.length} ${result.unread.length === 1 ? 'line' : 'lines'} in ${fileName} ${result.unread.length === 1 ? 'was' : 'were'} not recognised.`
+    + ` Let the local AI read ${lines.length < result.unread.length ? `the first ${lines.length}` : 'them'}? This can take a few minutes.`;
+  if (!confirm(ask)) return { result, aiNotes: '' };
+
+  const controller = new AbortController();
+  const progress = openScanProgressModal({ title: `Reading ${fileName}`, onCancel: () => controller.abort() });
+  progress.update(`Reading ${lines.length} ${lines.length === 1 ? 'line' : 'lines'} with the local AI…`);
+  try {
+    const ai = await extractFromRecords(lines, {
+      today: localToday(),
+      batches: openBatches.map((b) => b.batch_name),
+      signal: controller.signal,
+      onProgress: progress.update
+    });
+    progress.close();
+    const read = new Set(ai.entries.map((e) => e.source_text));
+    return {
+      result: { ...result, entries: [...result.entries, ...ai.entries], unread: result.unread.filter((l) => !read.has(l)) },
+      aiNotes: ai.entries.length ? `The local AI read ${ai.entries.length} of the unrecognised lines; check them carefully.` : ''
+    };
+  } catch (err) {
+    progress.close();
+    if (!controller.signal.aborted) showToast(`The local AI could not read them: ${err.message}`, 5000);
+    return { result, aiNotes: '' };
+  }
 }
 
 async function processQueue() {

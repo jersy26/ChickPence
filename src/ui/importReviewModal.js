@@ -124,9 +124,9 @@ export function renderImportReviewModal(drafts, openBatches, notes = '', errors 
  * Progress while the local AI reads a photo (can take minutes on a CPU-only PC).
  * Returns { update(message), close() }.
  */
-export function openScanProgressModal({ onCancel }) {
+export function openScanProgressModal({ onCancel, title = 'Scanning the logbook' }) {
   openModal(`
-    <h2>Scanning the logbook</h2>
+    <h2>${escapeHtml(title)}</h2>
     <div class="scan-progress">
       <div class="scan-spinner" aria-hidden="true"></div>
       <div>

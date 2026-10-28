@@ -66,6 +66,11 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* Stays in view on long pages, so the sync line at its bottom is always visible */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .logo-brand {
@@ -117,6 +122,58 @@ button {
 .sync-status-box .ok {
   color: var(--ok);
   font-weight: 600;
+}
+
+/* The sync line is a button that opens the Sync screen */
+button.sync-status {
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding-left: 12px;
+}
+
+button.sync-status:hover {
+  color: var(--ink);
+}
+
+.sync-status-box .sync-bad {
+  color: var(--bad);
+  font-weight: 700;
+}
+
+.sync-problems {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.sync-problem {
+  border: 1px solid var(--ln);
+  border-left: 3px solid var(--bad);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.sync-problem-error {
+  color: var(--bad);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.sync-problem-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .btn-link {
@@ -1182,6 +1239,8 @@ svg rect.b:hover {
     flex-direction: column;
   }
   .sidebar {
+    position: static;
+    height: auto;
     width: auto;
     flex-direction: row;
     flex-wrap: wrap;
