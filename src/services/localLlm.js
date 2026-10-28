@@ -15,8 +15,18 @@
 
 import { parseRecords } from './logbookParser.js';
 
+/**
+ * On the farm PC itself Ollama is at localhost. Opened from a phone or another
+ * computer, "localhost" would be that device, so the app's own server passes
+ * /ollama on to the farm PC (vite.config.js).
+ */
+export function defaultOllamaUrl(hostname = globalThis.location?.hostname) {
+  const onThisPc = !hostname || /^(localhost|127\.0\.0\.1|\[::1\]|::1)$/.test(hostname);
+  return onThisPc ? 'http://localhost:11434' : '/ollama';
+}
+
 const DEFAULTS = {
-  url: import.meta.env?.VITE_OLLAMA_URL || 'http://localhost:11434',
+  url: import.meta.env?.VITE_OLLAMA_URL || defaultOllamaUrl(),
   ocrModel: import.meta.env?.VITE_OLLAMA_OCR_MODEL || 'glm-ocr',
   textModel: import.meta.env?.VITE_OLLAMA_TEXT_MODEL || 'qwen3.5:4b'
 };

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { parseRecord, parseRecords, parseDate, parseBatch } from '../src/services/logbookParser.js';
-import { splitRecords, buildExtractPrompt, extractEntries, extractFromRecords, checkLocalLlm, setLlmSettings } from '../src/services/localLlm.js';
+import { splitRecords, buildExtractPrompt, extractEntries, extractFromRecords, checkLocalLlm, setLlmSettings, defaultOllamaUrl, listModels } from '../src/services/localLlm.js';
 import { renderLocalAiModal } from '../src/ui/localAiModal.js';
 
 const today = '2026-10-28';
@@ -158,6 +158,20 @@ describe('checkLocalLlm', () => {
     const r = await checkLocalLlm({ force: true });
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('ollama pull qwen3.5:4b');
+  });
+
+  it('defaults to localhost on the farm PC and to the /ollama proxy elsewhere', () => {
+    expect(defaultOllamaUrl('localhost')).toBe('http://localhost:11434');
+    expect(defaultOllamaUrl('127.0.0.1')).toBe('http://localhost:11434');
+    expect(defaultOllamaUrl(undefined)).toBe('http://localhost:11434'); // Node, tests
+    expect(defaultOllamaUrl('192.168.1.50')).toBe('/ollama');
+  });
+
+  it('reaches Ollama through the same-origin proxy', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ models: [{ name: 'glm-ocr:latest' }] }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await listModels('/ollama')).toEqual(['glm-ocr:latest']);
+    expect(fetchMock.mock.calls[0][0]).toBe('/ollama/api/tags');
   });
 
   it('reports when Ollama is not running', async () => {
