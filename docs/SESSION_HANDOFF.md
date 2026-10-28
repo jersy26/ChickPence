@@ -1,8 +1,31 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-29
-**Branch:** `main` (last feature merge: file import; everything is pushed to GitHub)
-**Tests:** 173 passing (`npm test`)
+**Branch:** `main` at `dac4abe` (last merge: `fix/open-items`). **The 2026-10-29 fixes (section 8) are not pushed yet**; everything before them is on GitHub.
+**Tests:** 180 passing (`npm test`)
+
+> **Next session: start with section 0 (To do).**
+
+---
+
+## 0. To do
+
+### Not finished (code work, in this order)
+1. **Push `main`** (the 2026-10-29 fixes and this handoff). Run `npm test` first.
+2. **Test "let the local AI read unrecognised lines" in the app with Ollama.** Only unit-tested; the Edge test script failed on its own bug (it used `process` inside page code). Steps: start Ollama, import a CSV with the lines `Okt 27 Batch 2026-09 patay 4` and `tatlong manok ang nawala sa batch 9 kahapon`, accept the prompt, wait a few minutes, check that the review modal shows both rows. Code: `readUnrecognisedWithAi` in `src/main.js`, `extractFromRecords` in `src/services/localLlm.js`.
+3. **Import `.xls` and `.ods`.** `read-excel-file` reads only `.xlsx`. Option: SheetJS Community Edition from its own CDN tarball (`https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`; the npm `xlsx` package is frozen with advisories), lazy-loaded only for these files. Today `fileKind` returns `'old-spreadsheet'` and the user is told to save as `.xlsx` or CSV.
+4. **Export the farm expenses themselves** (not the per-batch shares), e.g. a "Farm expenses" sheet or section in the whole-history export, so a farm can be restored from exports. Then let `fileImport.js` import that section; today expense rows in `ChickPence_*` files are skipped as shares (`reportShares`), so the detection must tell the two apart.
+5. **Phones and Ollama.** Add `server.proxy` and `preview.proxy` `'/ollama' → http://localhost:11434` in `vite.config.js` and allow `/ollama` as the Ollama address (same origin: no CORS, no mixed content). Add an https option for the LAN (e.g. `@vitejs/plugin-basic-ssl` behind an env flag), because phones allow the microphone only on https. Keep the COOP/COEP headers.
+6. **`npm audit fix`** (without `--force`) for the dev-tool advisories, then run the tests and the build.
+7. **Split the main bundle** (~628 KB): lazy-load Chart.js on the Dashboard and/or use `build.rollupOptions.output.manualChunks` for Supabase, Dexie and Chart.js.
+
+### Needs the user (cannot be done from here)
+- **Speak into a real microphone** in Chrome or Edge on the farm PC, in Filipino and Taglish, ideally in the shed. All voice tests used text-to-speech recordings.
+- **Hosting:** whatever serves the built app must send `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: credentialless`, or Whisper runs about 5× slower.
+
+### Known limits (no fix planned)
+- AI suggestion wording is sometimes generic (small model); the numbers and the better/worse direction come from code.
+- Whisper sometimes drops part of a buyer's name ("aling" for "Aling Nena"); the review form catches it.
 
 ---
 
@@ -18,6 +41,7 @@ ChickPence is mainly a reporting system, so we are adding these features:
 | 3b | Voice privacy: Web Speech (sent audio to Google/Microsoft) replaced by Whisper running in the browser | ✅ Done, merged; audio never leaves the device |
 | 4 | AI suggestions (local LLM) | ✅ Done, merged, tested in the app with Ollama on this PC |
 | 5 | Import logs from a file (Excel, CSV, PDF, photo) | ✅ Done, merged, tested in the app with sample files |
+| — | Open-item fixes (2026-10-29): ₱ in PDFs, suggestions setting, Sync screen, AI for unrecognised import lines | ✅ Merged, **not pushed** (section 8) |
 
 ### Architecture (updated: local LLM, no cloud AI)
 
@@ -60,7 +84,7 @@ The user asked for a local LLM instead of Claude, so the Supabase Edge Function 
 ### Decisions and gotchas
 - **Excel uses `write-excel-file` v4, not `xlsx`.** The npm `xlsx` package is frozen at 0.18.5 with security advisories. The v4 API is `writeXlsxFile([{ data, sheet, columns }]).toBlob()`, which differs from older docs.
 - **PDF uses `jspdf` + `jspdf-autotable` v5** (`import { autoTable } from 'jspdf-autotable'; autoTable(doc, {...})`).
-- **The PDF prints "PHP" instead of "₱"** because jsPDF's built-in fonts have no peso glyph. Embedding a font (~300 KB) would fix it if wanted.
+- **PDF currency:** fixed on 2026-10-29; PDFs embed Noto Sans and print ₱ (section 8).
 - **Libraries are lazy-loaded** (`await import(...)`) and precached by the service worker, so the main bundle stays small and export works offline.
 - **The Expenses section shows each batch's *allocated share*,** with an "Allocation basis" column (e.g. `11,000 / 11,000 heads`) for traceability.
 - **CSV:** UTF-8 BOM (so Excel reads ₱/ñ) and a formula-injection guard (text starting with `= + - @` gets a `'` prefix).
@@ -266,7 +290,7 @@ Local branch `feature/voice-input` still exists (not pushed; already merged).
 - Suggestions and photo scans share the same Ollama; a scan started while suggestions are being written waits for them (and the other way round).
 
 ### Still open
-- No switch to turn automatic suggestions off (e.g. on a slow PC). The ⚙ Local AI settings modal would be the place.
+- Fixed 2026-10-29: ⚙ Local AI settings → AI suggestions can be automatic, on request, or off (section 8).
 - The model is small: wording is sometimes generic ("check feed quality"). The numbers and the better/worse direction come from code, so they are always right.
 
 ---
@@ -296,7 +320,7 @@ Local branch `feature/voice-input` still exists (not pushed; already merged).
 ### Still open
 - The expense rows of a ChickPence batch report cannot be imported (they are shares). Restoring a whole farm from exports would need an export of the farm expenses themselves.
 - `.xls` (Excel 97–2003) and `.ods` are not read; save as `.xlsx` or CSV.
-- Unrecognised lines are only listed in the notes; unlike the photo scan, the local AI is not asked to read them.
+- Fixed 2026-10-29: the app offers to let the local AI read unrecognised lines (section 8; not yet tested with Ollama in the app, To do item 2).
 
 ---
 
@@ -332,7 +356,7 @@ Stop it with `npx supabase stop` (data is kept). The test login is in `supabase/
 Tested in the app against local Supabase: login, upload of every record type, download to a fresh browser, offline open in 3.1 s, queued entries uploaded within 5 s of the server returning.
 
 ### Still open
-- A record Supabase rejects for good (e.g. bad data) is retried on every sync and is only visible in the browser console and the pending count. There is no screen to see or discard it.
+- Fixed 2026-10-29: refused records are shown on the Sync screen (sidebar status) and can be retried or discarded (section 8).
 
 ### Commits (on `main`)
 ```
@@ -351,5 +375,18 @@ Local branch `feature/local-supabase-sync` still exists (not pushed; already mer
 - **Supabase:** local only, see section 6. Docker Desktop must be running before `npx supabase start`.
 - **Ollama** is installed and running on this PC with glm-ocr, qwen3.5:4b, qwen2.5:3b, qwen2.5:1.5b, llama3.2:3b, phi4-mini and nomic-embed-text.
 - An old stash (`stash@{0}`, from before the multi-batch work) still exists locally; it was left alone.
-- `npm audit` reports advisories in existing dev tooling (vitest, vite deps), not in the new export packages. `npm audit fix` is a separate cleanup.
-- Main JS chunk is ~565 KB (Chart.js, Supabase, Dexie), separate from the export libraries. Code-splitting could be a later optimization.
+- `npm audit` reports advisories in existing dev tooling (vitest, vite deps). See To do, item 6.
+- Main JS chunk is ~628 KB (Chart.js, Supabase, Dexie). See To do, item 7.
+
+---
+
+## 8. Done: open-item fixes (2026-10-29, merged, not pushed)
+
+| Commit | What changed |
+|---|---|
+| `6cb8ff6` | **₱ in PDF reports.** `src/assets/fonts/notoSansPdf.js` holds Noto Sans Regular and Bold (SIL OFL, licence in `OFL-NotoSans.txt`) as base64: static instances (wght 400 and 700) of Google Fonts' variable `NotoSans[wdth,wght].ttf`, trimmed with `subset-font` to Basic Latin, Latin-1 and ₱ – — ‘ ’ “ ” • … · × € (about 36 KB each). Lazy-loaded with jsPDF; `formatForText` writes `₱1,234.50`. Poppins and Fira Sans have no ₱; Lato has one but a Reserved Font Name, so a trimmed copy is not allowed. To regenerate: `subset-font` with `variationAxes: { wght, wdth: 100 }`. Checked by rendering a report page. |
+| `942d5c9` | **AI suggestions setting.** ⚙ Local AI settings → "AI suggestions": automatic (default), only when tapping **Write suggestions** (card status `paused`; the model never starts by itself), or off (card hidden). localStorage `chickpence_ai_suggestions`; `getSuggestionsMode` / `setSuggestionsMode` in `insightsService.js`. |
+| `057dfce` | **Sync status and Sync screen.** The sidebar status line was lost in the redesign (`renderShell` built it but never showed it). It is back (`renderSyncStatus`: "⚠ N could not upload", "Offline · N waiting", "N waiting to upload", "All synced"), and the desktop sidebar is sticky so it stays in view. Tapping it opens `src/ui/syncProblemsModal.js`: each refused change with the server's reason and attempt count, **Try again now**, and **Discard this change** (`discardChange` in `syncEngine.js`: removes its queued uploads and the local record; a batch takes its waiting records with it; the next download restores the server's version if one exists; cost sharing is recomputed). Checked in Edge on desktop and phone width. |
+| `d3b560c` | **AI for unrecognised import lines.** After a file import, if some lines were not recognised and the local AI is ready, a confirm asks to let it read them (at most 40, progress window with Cancel). `extractFromRecords` keeps each row as its own record (`extractEntries` joins lines that do not start with a date). **Not yet tested with Ollama in the app** (To do, item 2). |
+
+Tests: 180 (new: suggestion modes and the paused card, discard and the Sync screen, `extractFromRecords`). The production build passes.
