@@ -129,18 +129,12 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
   return `
     <div class="top-bar">
       <h1>Dashboard</h1>
-      <button class="btn-action primary" data-action="go-batches">Batches →</button>
     </div>
 
     <div class="flex-row" style="margin-bottom:6px;align-items:center;">
       <div class="text-mut" style="font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.05em;">
         Open Batches
       </div>
-      ${openBatchesData.length > 1 ? `
-        <button class="btn-link" id="btn-toggle-all-dash-batches" style="font-size:11px;font-weight:600;text-transform:uppercase;">
-          ${allCollapsed ? '+ Maximize All' : '− Minimize All'}
-        </button>
-      ` : ''}
     </div>
     ${openCardsHtml}
 
@@ -219,28 +213,7 @@ export function attachDashboardListeners(
       btn.setAttribute('aria-expanded', String(!isNowCollapsed));
       btn.innerHTML = renderBatchToggleIcon(isNowCollapsed);
 
-      const allToggleBtn = container.querySelector('#btn-toggle-all-dash-batches');
-      if (allToggleBtn && openBatchesData.length > 0) {
-        const allCollapsed = openBatchesData.every((d) => collapsedBatchIds.has(d.batch.batch_id));
-        allToggleBtn.textContent = allCollapsed ? '+ Maximize All' : '− Minimize All';
-      }
     });
-  });
-
-  // Toggle all open batches on dashboard
-  container.querySelector('#btn-toggle-all-dash-batches')?.addEventListener('click', () => {
-    const allCollapsed =
-      openBatchesData.length > 0 &&
-      openBatchesData.every((d) => collapsedBatchIds.has(d.batch.batch_id));
-    if (allCollapsed) {
-      openBatchesData.forEach((d) => collapsedBatchIds.delete(d.batch.batch_id));
-    } else {
-      openBatchesData.forEach((d) => collapsedBatchIds.add(d.batch.batch_id));
-    }
-    try {
-      localStorage.setItem('chickpence_collapsed_batches', JSON.stringify([...collapsedBatchIds]));
-    } catch (_) {}
-    onReload();
   });
 
   container.querySelectorAll('.chart-bar-group').forEach((bar) => {

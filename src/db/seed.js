@@ -4,7 +4,7 @@ import { isBatchActiveOnDate, liveHeadCount } from '../services/allocationEngine
 
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
 export const PLACEHOLDER_BUYER = 'Buyer (placeholder)';
-export const SEED_VERSION = 'v2.2_realistic_poultry_data';
+export const SEED_VERSION = 'v2.3_feed_integer_grams';
 
 const addDays = (dateStr, n) => {
   const d = new Date(dateStr + 'T00:00:00Z');
@@ -65,7 +65,8 @@ function generateBatchData(o) {
       feed_log_id: crypto.randomUUID(),
       batch_id: batchId,
       entry_date: d,
-      quantity_kg: Math.round(o.chicks * (0.015 + (i / o.days) * 0.13) * (0.95 + rf() * 0.1)),
+      // Stored as integer grams (quantity_g); UI converts to/from kg.
+      quantity_g: Math.round(o.chicks * (0.015 + (i / o.days) * 0.13) * (0.95 + rf() * 0.1) * 1000),
       updated_at: now,
       deleted_at: null
     });

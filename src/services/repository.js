@@ -237,11 +237,14 @@ export const Repository = {
   // ---------------------------------------------------------------------------
 
   async saveFeedLog(log) {
+    // UI accepts quantity in kg; stored as integer grams (quantity_g) to satisfy
+    // the integer-only precision requirement (NFR-04 / Table 15).
+    const kgInput = Number(log.quantity_kg) || 0;
     const record = {
       feed_log_id: log.feed_log_id || crypto.randomUUID(),
       batch_id: log.batch_id,
       entry_date: log.entry_date,
-      quantity_kg: Number(log.quantity_kg) || 0,
+      quantity_g: Math.round(kgInput * 1000),
       updated_at: new Date().toISOString(),
       deleted_at: null
     };

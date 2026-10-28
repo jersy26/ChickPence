@@ -212,8 +212,13 @@ export function calcBatchMetrics(batch, allocations, sales, mortalityLogs, feedL
   const mortalityRate = (totalDeaths / initialChicks) * 100;
 
   // --- FCR ---
+  // Feed is stored as integer grams (quantity_g). Divide by 1000 to get kg
+  // for FCR computation. Falls back to quantity_kg for any pre-migration rows.
   const activeFeed = feedLogs.filter((f) => !f.deleted_at);
-  const totalFeedKg = activeFeed.reduce((s, f) => s + (Number(f.quantity_kg) || 0), 0);
+  const totalFeedKg = activeFeed.reduce((s, f) => {
+    if (f.quantity_g !== undefined) return s + (Number(f.quantity_g) || 0) / 1000;
+    return s + (Number(f.quantity_kg) || 0); // legacy fallback
+  }, 0);
   const fcr = kgSold > 0 ? totalFeedKg / kgSold : NA;
 
   // --- ROBC ---

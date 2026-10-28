@@ -91,16 +91,6 @@ function updateSyncIndicator() {
 
   const indicatorText = document.getElementById('sync-indicator-text');
   if (indicatorText) indicatorText.innerHTML = syncHtml;
-
-  const toggleNetBtn = document.getElementById('btn-toggle-net');
-  if (toggleNetBtn) {
-    toggleNetBtn.textContent = state.syncStatus.isSimulatedOffline ? 'Go online' : 'Simulate offline';
-  }
-
-  const cloudBtn = document.getElementById('btn-open-cloud-config');
-  if (cloudBtn) {
-    cloudBtn.textContent = `⚙ Supabase ${state.syncStatus.isSupabaseConnected ? '(Connected)' : '(Demo Mode)'}`;
-  }
 }
 
 async function render() {

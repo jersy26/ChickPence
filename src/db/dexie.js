@@ -86,6 +86,32 @@ export class ChickPenceDatabase extends Dexie {
           });
         }
       });
+
+    // v3 – feed_logs: quantity_kg (float) → quantity_g (integer grams)
+    //      Storing as integer grams eliminates floating-point rounding and satisfies
+    //      the integer-only storage requirement in ERD Table 15 (NFR-04).
+    this.version(3)
+      .stores({
+        batches: 'batch_id, user_id, batch_name, start_date, status, updated_at, deleted_at',
+        daily_costs: 'cost_id, batch_id, entry_date, updated_at, deleted_at',
+        feed_logs: 'feed_log_id, batch_id, entry_date, updated_at, deleted_at',
+        mortality_logs: 'mortality_id, batch_id, entry_date, updated_at, deleted_at',
+        sales: 'sale_id, batch_id, sale_date, updated_at, deleted_at',
+        expenses: 'expense_id, entry_date, updated_at, deleted_at',
+        allocations: '[expense_id+batch_id], expense_id, batch_id',
+        outbox: '++id, table_name, record_id, action, updated_at',
+        app_state: 'key'
+      })
+      .upgrade(async (tx) => {
+        // Convert quantity_kg (float) → quantity_g (integer grams)
+        // Math.round ensures no fractional grams are stored.
+        await tx.table('feed_logs').toCollection().modify((row) => {
+          if (row.quantity_kg !== undefined) {
+            row.quantity_g = Math.round((Number(row.quantity_kg) || 0) * 1000);
+            delete row.quantity_kg;
+          }
+        });
+      });
   }
 }
 
