@@ -2,6 +2,15 @@ import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// Cross-origin isolation lets the ONNX runtime use several CPU threads for
+// Whisper (voice typing); without it, it runs on one. "credentialless" still
+// allows Google Fonts, Supabase and Ollama. The server hosting the built app
+// must send the same two headers.
+const ISOLATION_HEADERS = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'credentialless'
+};
+
 export default defineConfig({
   plugins: [
     tailwindcss(),
@@ -54,6 +63,10 @@ export default defineConfig({
     format: 'es'
   },
   server: {
-    port: 3000
+    port: 3000,
+    headers: ISOLATION_HEADERS
+  },
+  preview: {
+    headers: ISOLATION_HEADERS
   }
 });

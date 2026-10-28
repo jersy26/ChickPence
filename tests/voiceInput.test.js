@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { normalizeSpoken, parseRecord, parseRecords } from '../src/services/logbookParser.js';
 import { parseSpokenEntry, draftToFormPrefill, normalizeDrafts } from '../src/services/aiParseService.js';
 import { setLlmSettings } from '../src/services/localLlm.js';
-import { startDictation, isSpeechSupported, micErrorMessage, createSilenceDetector, cleanTranscript, isVoiceModelCached, SILENCE } from '../src/services/speechInput.js';
+import { startDictation, isSpeechSupported, micErrorMessage, createSilenceDetector, cleanTranscript, isVoiceModelCached, SILENCE, buildVoicePrompt, stripPrompt } from '../src/services/speechInput.js';
 import { renderBatches, renderVoiceBar } from '../src/ui/batchesView.js';
 
 const today = '2026-10-28';
@@ -33,6 +33,38 @@ describe('normalizeSpoken', () => {
 
   it('does not read a spoken "may 3 patay" as May 3', () => {
     expect(normalizeSpoken('May tatlong patay')).toBe('meron 3 patay');
+  });
+
+  it('reads the spellings Whisper writes for Filipino numbers', () => {
+    // o/u spellings, split and joined words, digits mixed with words
+    expect(normalizeSpoken('May tatlung patay')).toBe('meron 3 patay');
+    expect(normalizeSpoken('isang daan at limampong kilo')).toBe('150 kg');
+    expect(normalizeSpoken('limang pung kilo')).toBe('50 kg');
+    expect(normalizeSpoken('walung daan at limampong piso')).toBe('₱850');
+    expect(normalizeSpoken('walungdaan piso')).toBe('₱800');
+    expect(normalizeSpoken('isang daan at 20 ulo')).toBe('120 ulo');
+    expect(normalizeSpoken('2 daan at apatnaput limang kilo')).toBe('245 kg');
+    expect(normalizeSpoken('dalawang daan at apat na put limang kilo')).toBe('245 kg');
+    expect(normalizeSpoken('tig isang daan at labing walo kada kilo')).toBe('@118/kg');
+    expect(normalizeSpoken('sampong sako')).toBe('10 sako');
+    // -ng said as -m before p/b, as Whisper wrote it through the microphone
+    expect(normalizeSpoken('May tatlumpatay sa batch siyam kahapon')).toBe('meron 3 patay sa batch 9 kahapon');
+    expect(normalizeSpoken('limam piso')).toBe('₱5');
+    expect(normalizeSpoken('limampung piso')).toBe('₱50');
+    expect(normalizeSpoken('tatlumpu')).toBe('30');
+  });
+
+  it('keeps a polite "po", "wala" and separate amounts as they are', () => {
+    expect(normalizeSpoken('apat na po ang patay')).toBe('4 na po ang patay');
+    expect(normalizeSpoken('wala pong patay')).toBe('wala pong patay');
+    expect(normalizeSpoken('120 heads at 245 kg')).toBe('120 heads at 245 kg');
+    expect(normalizeSpoken('150 at 20')).toBe('150 at 20');
+  });
+
+  it('splits "kay" off the words Whisper joins it to', () => {
+    expect(normalizeSpoken('Nagbentakay Aling Nena')).toBe('Nagbenta kay Aling Nena');
+    expect(normalizeSpoken('nagbenta kayaling Nena')).toBe('nagbenta kay aling Nena');
+    expect(normalizeSpoken('5 na matay')).toBe('5 namatay');
   });
 
   it('does not join a weight and a "1 kg" price into one number', () => {
@@ -300,6 +332,31 @@ describe('speechInput (Whisper on this device)', () => {
     expect(browser.entry).toMatchObject({ type: 'mortality', count: 3, date: '2026-10-27', batch_hint: 'Batch 2026-09' });
   });
 
+  it('gives Whisper a farm-word prompt with the open batches, and strips it from the answer', () => {
+    const fil = buildVoicePrompt('fil-PH', ['Batch 2026-07', 'Batch 2026-09', 'Batch 2026-12']);
+    expect(fil).toContain('batch pito, batch siyam, batch 12.');
+    expect(fil).toContain('kahapon');
+    expect(fil).not.toMatch(/Nena|\d{3}/); // no buyers or amounts that could leak into an entry
+    expect(buildVoicePrompt('en-PH', ['Batch 2026-09'])).toContain('batch nine.');
+    expect(buildVoicePrompt('fil-PH', [])).toMatch(/^Talaan ng manukan\. Namatay/);
+
+    expect(stripPrompt(`${fil} May tatlong patay.`, fil)).toBe('May tatlong patay.');
+    expect(stripPrompt(`Talaan ng manukan,${fil.slice(18)} 5 patay`, fil)).toBe('5 patay'); // small changes at the start
+    expect(stripPrompt('5 patay', fil)).toBe('5 patay');
+    // What whisper-small wrote for silence, hiss and hum: an echo of the prompt, so nothing was said
+    expect(stripPrompt(`${fil} Talaan ng manukan.`, fil)).toBe('');
+    expect(stripPrompt('Talaan ng manukan', fil)).toBe('');
+    expect(stripPrompt('patay', fil)).toBe(''); // a single prompt word alone is not an entry either
+  });
+
+  it('passes the open batches through to Whisper', async () => {
+    vi.useFakeTimers();
+    const { media, calls } = fakeMedia({ levels: [...speech(10), ...quiet(30)] });
+    startDictation({ lang: 'fil-PH', batchNames: ['Batch 2026-09'], media, onFinal: () => {} });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(calls.transcribe[0]).toMatchObject({ lang: 'fil-PH', batchNames: ['Batch 2026-09'] });
+  });
+
   it('knows whether the voice model is already downloaded', async () => {
     const win = (urls) => ({ caches: { open: async () => ({ keys: async () => urls.map((url) => ({ url })) }) } });
     const base = 'https://huggingface.co/onnx-community/whisper-base/resolve/main/onnx/decoder_model_merged_quantized.onnx';
@@ -332,9 +389,9 @@ describe('voice bar and prefilled form', () => {
   it('says the recording stays on the device, and mentions the first download', () => {
     const first = renderVoiceBar(null, { supported: true, online: true, modelReady: false });
     expect(first).toContain('never sent anywhere');
-    expect(first).toContain('about 73 MB');
+    expect(first).toContain('about 240 MB');
     expect(first).not.toContain('Google');
-    expect(renderVoiceBar(null, { supported: true, online: true, modelReady: true })).not.toContain('73 MB');
+    expect(renderVoiceBar(null, { supported: true, online: true, modelReady: true })).not.toContain('240 MB');
   });
 
   it('escapes the transcript and message', () => {

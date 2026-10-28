@@ -1,8 +1,8 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-28
-**Branch:** `main` (last feature merge: Whisper voice input; AI suggestions are pushed, Whisper is not yet)
-**Tests:** 153 passing (`npm test`)
+**Branch:** `main` (last feature merge: voice test fixes; everything before it is pushed)
+**Tests:** 158 passing (`npm test`)
 
 ---
 
@@ -14,7 +14,7 @@ ChickPence is mainly a reporting system, so we are adding four features:
 |---|---|---|
 | 1 | Export reports (Excel, PDF, CSV) | ✅ Done, merged, pushed |
 | 2 | Logbook photo scanning with a **local LLM (Ollama)** + draft review modal | ✅ Done and tested end to end on this PC |
-| 3 | Voice input in the entry form | ✅ Done, merged (tested by typing and with recorded speech; a real microphone not tested yet) |
+| 3 | Voice input in the entry form | ✅ Done, merged; tested with Filipino/Taglish recordings through Edge's mic path and offline (a real person speaking not tested yet) |
 | 3b | Voice privacy: Web Speech (sent audio to Google/Microsoft) replaced by Whisper running in the browser | ✅ Done, merged; audio never leaves the device |
 | 4 | AI suggestions (local LLM) | ✅ Done, merged, tested in the app with Ollama on this PC |
 
@@ -153,49 +153,62 @@ Local branches `feature/ai-parse` and `feature/local-llm` still exist (not pushe
 - Tap Speak, say one entry, pause → the recording stops by itself (or tap **■ Stop**) → "Turning your voice into text on this device…" → the form switches to the right tab (Expenses / Feed / Mortality / Sales), picks the batch and fills the fields. Fields to check are highlighted, and a line says which ones. The user taps **Save** as usual, so the form is the review step and saving goes through the existing `Repository.save*` code.
 - A misheard word can be fixed in the text box and read again with **Fill form** (Enter works too). The same box lets you type a sentence without the mic.
 - A spoken expense runs the allocation preview automatically, so **Save Expense** is ready.
-- The first time, "Loading the voice model… 45%" shows while the model downloads (about 73 MB). After that it works **offline**. Offline before the first download, the mic is disabled with a note; typing still works.
+- The first time, "Loading the voice model… 45%" shows while the model downloads (about 240 MB). After that it works **offline**. Offline before the first download, the mic is disabled with a note; typing still works.
 - The line under the mic says the recording never leaves the device. The mic is hidden where the browser cannot record (no `MediaRecorder`, or a plain-`http` page on a LAN address).
-- **⚙ Local AI settings → Voice typing model:** whisper-base (default) or whisper-small (localStorage `chickpence_voice_model`).
+- **⚙ Local AI settings → Voice typing model:** whisper-small (default, accurate) or whisper-base (fast, weak in Filipino); localStorage `chickpence_voice_model`.
 
 ### How it works
 1. **Recording** (`speechInput.js`): `getUserMedia` + `MediaRecorder`. A Web Audio level meter feeds `createSilenceDetector`, which stops after speech followed by 1.5 s of quiet, gives up after 7 s without speech (Whisper is not called), and caps a recording at 20 s. Tapping Stop always reads what was recorded.
-2. **Speech → text** (`whisperWorker.js`): the recording is decoded into a 16 kHz context (that resamples it), mixed to mono, and sent to a Web Worker that runs **Whisper with Transformers.js** (`@huggingface/transformers` 4.3.1, pinned), `dtype: 'q8'`, on WebAssembly. `language` is `tagalog` for Filipino and `english` for English (PH). The model loads while the user is still speaking.
-3. **Files:** the model comes from Hugging Face (`onnx-community/whisper-base` or `-small`) the first time. The ONNX runtime (26 MB `.wasm`) is served by the app itself: `whisperWorker.js` points `wasmPaths` at `node_modules/onnxruntime-web` so Vite bundles it, instead of Transformers.js's default jsDelivr CDN. Both are kept in the browser's Cache Storage (`transformers-cache`); `isVoiceModelCached` checks it to decide whether the mic works offline.
-4. `cleanTranscript` drops Whisper's tags (`[BLANK_AUDIO]`, `(music)`), the final period, and splits "3-Dead" into "3 Dead".
-5. **Reading the sentence** is unchanged: `normalizeSpoken` (`logbookParser.js`) rewrites speech into logbook wording (Filipino/English number words → digits, kilo → kg, "118 pesos per kilo" / "tig 118" → price per kg, "850 pesos" → ₱850, "ika-26 ng Oktubre" → "Oktubre 26", "batch 2026 9" → "Batch 2026-09", a leading "May 3 patay" is not May 3), then the same `parseRecord` rules as the logbook with today as the default date, and only when they fail the local text model (`extractEntries`). Only the first entry is used.
+2. **Speech → text** (`whisperWorker.js`): the recording is decoded into a 16 kHz context (that resamples it), mixed to mono, and sent to a Web Worker that runs **Whisper with Transformers.js** (`@huggingface/transformers` 4.3.1, pinned), `dtype: 'q8'`, on WebAssembly. `language` is `tagalog` for Filipino and `english` for English (PH).
+3. **Vocabulary prompt** (`buildVoicePrompt`): a short sample of farm-log words is given to Whisper before the recording (its "initial prompt", passed as `decoder_input_ids` because Transformers.js has no prompt option), with the open batches as they are said ("batch pito, batch siyam"). It never names buyers or amounts. `stripPrompt` removes it from the answer, and an answer that is only an echo of it (what Whisper writes for silence or noise) counts as nothing said.
+4. **Speed:** the page is **cross-origin isolated** (COOP `same-origin` + COEP `credentialless`, set in `vite.config.js` for dev and preview), so ONNX can use several threads; it uses all CPU threads but 2. An already downloaded model is loaded when the entry form opens (`warmUpVoiceModel`), not during the recording, and is released after 10 idle minutes.
+5. **Files:** the model comes from Hugging Face (`onnx-community/whisper-small` or `-base`) the first time. The ONNX runtime (26 MB `.wasm`) is served by the app itself: `whisperWorker.js` points `wasmPaths` at `node_modules/onnxruntime-web` so Vite bundles it, instead of Transformers.js's default jsDelivr CDN. Both are kept in the browser's Cache Storage (`transformers-cache`); `isVoiceModelCached` checks it.
+6. `cleanTranscript` drops Whisper's tags (`[BLANK_AUDIO]`, `(music)`), the final period, and splits "3-Dead" into "3 Dead".
+7. **Reading the sentence:** `normalizeSpoken` (`logbookParser.js`) first evens out Filipino spelling the way Whisper writes it: o/u ("tatlung", "limampong", "walung"), split or joined words ("limang pu", "apatnaput", "walungdaan", "Nagbentakay", "kayaling"), -ng said as -m before p/b ("tatlumpatay"), and digits mixed with words ("isang daan at 20" → 120, "2 daan at 45" → 245); a polite "po" is left alone ("apat na po" stays 4). Then number words → digits, kilo → kg, prices, pesos and dates as before, the same `parseRecord` rules as the logbook with today as the default date, and only when they fail the local text model (`extractEntries`).
 
-### Measured on this PC (CPU only, 7 GB RAM)
-| | whisper-base q8 (default) | whisper-small q8 |
+### Tested on this PC (CPU only, 8 threads, 7 GB RAM, Intel UHD Gen 9)
+- **Test recordings:** 8 Filipino and Taglish farm sentences made with Google's Filipino text-to-speech voice (mortality, feed, sale, expense, sacks of feed; Taglish mortality, sale, expense).
+- **Model choice (Node, same recordings):** whisper-base read 3 of 8 into usable entries even with the prompt; whisper-small with the prompt and the spelling rules read 7 of 8 (the eighth lost its count). So small is the default.
+- **Real browser path:** Edge driven over DevTools with its fake-microphone option (`--use-file-for-fake-audio-capture`) playing the recordings into the production build (`vite preview`), so `getUserMedia`, `MediaRecorder`, silence detection, the worker and the form all ran for real.
+
+| Recording | Form filled | Reading time |
 |---|---|---|
-| Download | 73 MB | 240 MB |
-| Per sentence (Node, onnxruntime-node) | 4–5 s | 13–15 s |
-| In the app (browser, model cached) | 4.9 s from the end of speech to a filled form | not measured |
+| "May tatlong patay sa batch siyam kahapon" | Mortality, Batch 2026-09, yesterday, 3 | 10.8 s |
+| Filipino sale (13.6 s long) | Sale, Batch 2026-09, 120 heads, 245 kg, ₱118/kg; buyer "aling" instead of "Aling Nena" | 17.1 s |
+| Taglish sale | Sale, Batch 2026-07, Mang Jun, 80 heads, 160 kg, ₱120/kg | 11.6 s |
+| Filipino expense | Expense, other costs ₱850 | 17.8 s |
+| Filipino feed, **offline** (server stopped, internet blocked, browser offline) | Feed, Batch 2026-07, 150 kg | 10.0 s |
 
-English test recordings (Windows text-to-speech) were read correctly apart from small slips ("245 kilos" once came out as "245 kph"; the weight was then flagged for checking). The only Windows voices are English, so **Filipino could not be tested properly**: the English voice reading Tagalog came out garbled with both models.
+- Before the fixes it took 53–64 s per sentence (one or 4 threads); with all 8 threads it took 17 s but the recorder lost the start of the sentence, hence 6 threads.
+- First use: the 240 MB download took 50–70 s here; loading the model from the cache takes ~30 s after the browser starts (hidden behind opening the form).
+- The same recording can come out slightly differently from run to run (noise suppression and compression in the mic path).
 
 ### Files
 | File | Role |
 |---|---|
-| `src/services/speechInput.js` | Recording, `createSilenceDetector`, Whisper worker client (`transcribe`, `preloadVoiceModel`), `cleanTranscript`, `micErrorMessage`, `isVoiceModelCached`, language and model settings |
-| `src/services/whisperWorker.js` | Transformers.js pipeline in a Web Worker, download progress, local ONNX runtime |
-| `src/services/logbookParser.js` | `normalizeSpoken` + the spoken rules |
+| `src/services/speechInput.js` | Recording, `createSilenceDetector`, Whisper worker client (`transcribe`, `preloadVoiceModel`, `warmUpVoiceModel`, idle unload), `buildVoicePrompt`, `stripPrompt`, `cleanTranscript`, `micErrorMessage`, `isVoiceModelCached`, language and model settings |
+| `src/services/whisperWorker.js` | Transformers.js pipeline in a Web Worker, prompt tokens, threads, download progress, local ONNX runtime, timing |
+| `src/services/logbookParser.js` | `normalizeSpoken` with `standardizeFilipino` and `joinSpokenParts` + the spoken rules |
 | `src/services/aiParseService.js` | `parseSpokenEntry` (rules → local AI fallback), `draftToFormPrefill` |
-| `src/ui/batchesView.js` | `renderVoiceBar` (offline / first-download notes), prefill + highlight, mic listeners |
+| `src/ui/batchesView.js` | `renderVoiceBar` (offline / first-download notes), prefill + highlight, mic listeners, warm-up when the form opens |
 | `src/ui/localAiModal.js` | Voice typing model picker |
 | `src/main.js` | `state.voice`, `fillFormFromVoice`, `buildExpensePreview`; passes `isVoiceModelCached()` to the Batches page |
-| `vite.config.js` | `worker.format: 'es'` |
-| `tests/voiceInput.test.js` | Number words, spoken sentences, recorder with fake mic/recorder/Whisper (auto stop, no speech, Stop, abort, errors), silence detector, Whisper output through the rules, model cache check, voice bar states |
+| `vite.config.js` | `worker.format: 'es'`; COOP/COEP headers for dev and preview |
+| `.claude/launch.json` | `preview` configuration (production build on port 4173) |
+| `tests/voiceInput.test.js` | Number words incl. Whisper's Filipino spellings, spoken sentences, recorder with fake mic/recorder/Whisper (auto stop, no speech, Stop, abort, errors, batches passed on), silence detector, prompt and echo stripping, Whisper output through the rules, model cache check, voice bar states |
 
 ### Decisions and gotchas
-- **Why in the browser, not a Whisper server:** nothing to install or start on the PC, works offline after the first download, and on a phone the phone does the work, so voice no longer depends on reaching the farm PC.
-- No live words while speaking (Whisper reads the whole recording at the end), unlike the old Web Speech version.
-- Recording plus Ollama: the voice model takes ~200–400 MB of browser memory while loaded, on a PC that is already short of memory (section 3).
+- **Why in the browser, not a Whisper server:** nothing to install or start on the PC, works offline after the first download, and on a phone the phone does the work.
+- **Hosting:** whatever serves the built app must send `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: credentialless`; without them voice still works but on one thread (about 5× slower). Browsers without `credentialless` (Safari) also fall back to one thread.
+- A browser that cached the app before the headers existed keeps the old worker file until the next update; a fresh install is fine.
+- The console shows one `Whisper …` info line per sentence (audio length, load and reading time, threads) for checking speed on another PC.
+- No live words while speaking (Whisper reads the whole recording at the end).
+- The loaded model takes several hundred MB of browser memory; with Ollama's text model also loaded (2 GB) this PC had under 1 GB free.
 - The first Vite dev run after installing re-optimizes dependencies and reloads the page once.
 
 ### Still open
-- **Real speech through a microphone, especially Filipino and Taglish, is not tested.** Try it in Chrome or Edge on the farm PC; if Filipino is poor, switch to whisper-small in ⚙.
-- **Phones:** the microphone only works on `https` pages (or `localhost`). Voice itself now runs on the phone, but a sentence the rules cannot read falls back to Ollama on the farm PC, which an `https` page cannot call over plain `http` (section 3).
-- Offline use after the first download is expected from the cache but was not tested with the network actually off.
+- **A real person speaking into a real microphone is still untested**, especially in a noisy shed. All tests used text-to-speech recordings. whisper-base in ⚙ is faster but much weaker in Filipino.
+- **Phones:** the microphone only works on `https` pages (or `localhost`). Voice itself runs on the phone, but a sentence the rules cannot read falls back to Ollama on the farm PC, which an `https` page cannot call over plain `http` (section 3). A phone may also be too slow for whisper-small.
 
 ### Commits (on `main`)
 ```

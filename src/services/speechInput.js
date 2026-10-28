@@ -22,11 +22,60 @@ export const VOICE_LANGS = [
   { code: 'en-PH', label: 'English (PH)', whisper: 'english' }
 ];
 
-/** Measured on the farm PC (CPU only): base ~5 s per sentence, small ~15 s. */
+/**
+ * Measured on the farm PC (CPU only) with Filipino and Taglish recordings:
+ * small read 7 of 8 sentences into usable entries (~7–12 s each); base only
+ * 3 of 8 (~2–4 s), so small is the default and base the fast option.
+ */
 export const VOICE_MODELS = [
-  { id: 'onnx-community/whisper-base', label: 'Fast: whisper-base (73 MB download)', sizeMb: 73 },
-  { id: 'onnx-community/whisper-small', label: 'Better for Filipino, about 3× slower: whisper-small (240 MB)', sizeMb: 240 }
+  { id: 'onnx-community/whisper-small', label: 'Accurate: whisper-small (240 MB download)', sizeMb: 240 },
+  { id: 'onnx-community/whisper-base', label: 'Fast, weaker in Filipino: whisper-base (73 MB)', sizeMb: 73 }
 ];
+
+const FIL_DIGITS = ['isa', 'dalawa', 'tatlo', 'apat', 'lima', 'anim', 'pito', 'walo', 'siyam', 'sampu'];
+const EN_DIGITS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+
+/** "Batch 2026-09" → "batch siyam" / "batch nine": how a batch is usually said. */
+function spokenBatch(name, words) {
+  const n = Number(String(name).match(/(\d+)\D*$/)?.[1]);
+  if (!n) return null;
+  return `batch ${n <= 10 ? words[n - 1] : n}`;
+}
+
+/**
+ * A short sample of farm-log wording given to Whisper before the recording
+ * (its "initial prompt"), so it spells the farm's words the way the rules read
+ * them. Without it whisper-small wrote "batch siya mga hapon" for "batch siyam
+ * kahapon" in testing. It never names buyers or amounts.
+ */
+export function buildVoicePrompt(lang = getVoiceLang(), batchNames = []) {
+  const english = lang === 'en-PH';
+  const batches = batchNames.map((b) => spokenBatch(b, english ? EN_DIGITS : FIL_DIGITS)).filter(Boolean);
+  const list = batches.length ? `${batches.join(', ')}. ` : '';
+  return english
+    ? `Poultry farm log. ${list}Dead, feed, sacks, kilos, sold, heads, per kilo, pesos, electricity, vitamins, yesterday, today.`
+    : `Talaan ng manukan. ${list}Namatay, patay, patuka, pakain, sako, kilo, nagbenta, ulo, kada kilo, piso, kuryente, bitamina, kahapon, ngayon. Dalawampu, tatlumpu, apatnapu, limampu, animnapu, isang daan.`;
+}
+
+/**
+ * Whisper repeats the prompt at the start of its output; keep only what was
+ * said. On silence or noise it echoes part of the prompt ("Talaan ng manukan"
+ * in testing); that counts as nothing said.
+ */
+export function stripPrompt(text, prompt) {
+  const t = String(text || '').trim();
+  const p = String(prompt || '').trim();
+  if (!p) return t;
+  let said = t;
+  if (t.startsWith(p)) said = t.slice(p.length).trim();
+  else {
+    const tail = p.slice(-24);
+    const at = t.lastIndexOf(tail);
+    if (at >= 0) said = t.slice(at + tail.length).trim();
+  }
+  const plain = (s) => s.toLowerCase().replace(/[^a-z0-9ñ]+/g, ' ').trim();
+  return plain(said) && plain(p).includes(plain(said)) ? '' : said;
+}
 
 /** Recording needs a microphone API, a recorder, Web Audio and workers. */
 export function isSpeechSupported(win = globalThis) {
@@ -145,8 +194,22 @@ export function createSilenceDetector(opts = SILENCE) {
 let worker = null;
 let nextId = 1;
 const pending = new Map(); // id → { resolve, reject, onProgress, onStatus }
+let idleTimer = null;
+
+// The loaded model holds several hundred MB; give it back after a quiet spell
+const IDLE_UNLOAD_MS = 10 * 60 * 1000;
+
+function scheduleUnload() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (pending.size || !worker) return scheduleUnload();
+    worker.terminate();
+    worker = null;
+  }, IDLE_UNLOAD_MS);
+}
 
 function getWorker() {
+  scheduleUnload();
   if (worker) return worker;
   worker = new Worker(new URL('./whisperWorker.js', import.meta.url), { type: 'module' });
   worker.onmessage = ({ data }) => {
@@ -182,21 +245,33 @@ export function loadingMessage(loaded, total, model = getVoiceModel()) {
   return `Loading the voice model… ${pct}% (the first time it downloads about ${voiceModelInfo(model).sizeMb} MB, then it works offline)`;
 }
 
-/** Start loading the voice model while the user is still speaking. */
+/** Start loading the voice model (from the cache, or downloading it the first time). */
 export function preloadVoiceModel() {
   return ask({ type: 'load', model: getVoiceModel() }).catch(() => {});
 }
 
+/**
+ * Load an already downloaded model as soon as the entry form opens, so it is
+ * ready before the user speaks: loading during the recording competed with
+ * the recorder for the CPU. Never starts the first download by itself.
+ */
+export async function warmUpVoiceModel(win = globalThis) {
+  if (await isVoiceModelCached(getVoiceModel(), win)) preloadVoiceModel();
+}
+
 /** 16 kHz mono audio → text, on this device. */
-export async function transcribe(audio, { lang = getVoiceLang(), onStatus } = {}) {
+export async function transcribe(audio, { lang = getVoiceLang(), batchNames = [], onStatus } = {}) {
   const model = getVoiceModel();
   const language = VOICE_LANGS.find((l) => l.code === lang)?.whisper || 'tagalog';
-  const { text } = await ask({ type: 'transcribe', model, language, audio }, {
+  const prompt = buildVoicePrompt(lang, batchNames);
+  const seconds = (audio.length / 16000).toFixed(1); // read before the buffer moves to the worker
+  const { text, timing } = await ask({ type: 'transcribe', model, language, prompt, audio }, {
     transfer: [audio.buffer],
     onProgress: ({ loaded, total }) => onStatus?.(loadingMessage(loaded, total, model), 'loading'),
     onStatus: () => onStatus?.('Turning your voice into text on this device…', 'transcribing')
   });
-  return cleanTranscript(text);
+  console.info(`Whisper ${model}: ${seconds} s of audio, model ready in ${timing?.loadMs} ms, read in ${timing?.runMs} ms, ${timing?.threads} threads, isolated: ${globalThis.crossOriginIsolated}`);
+  return cleanTranscript(stripPrompt(text, prompt));
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +336,7 @@ export function browserMedia(win = globalThis) {
  * Returns { stop, abort }: stop() ends the recording and still reads it;
  * abort() throws it away.
  */
-export function startDictation({ lang = getVoiceLang(), onStatus, onFinal, onError, onEnd, media = browserMedia() } = {}) {
+export function startDictation({ lang = getVoiceLang(), batchNames = [], onStatus, onFinal, onError, onEnd, media = browserMedia() } = {}) {
   const detector = createSilenceDetector();
   const chunks = [];
   let stream = null;
@@ -286,7 +361,7 @@ export function startDictation({ lang = getVoiceLang(), onStatus, onFinal, onErr
     try {
       onStatus?.('Turning your voice into text on this device…', 'transcribing');
       const audio = await media.decode(new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' }));
-      const text = await media.transcribe(audio, { lang, onStatus });
+      const text = await media.transcribe(audio, { lang, batchNames, onStatus });
       if (aborted) return;
       if (text) onFinal?.(text);
       else onEnd?.();

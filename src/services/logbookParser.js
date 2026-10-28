@@ -231,17 +231,68 @@ function runValue(run) {
 }
 
 /**
+ * Filipino spelling varies (o/u: "tatlong" / "tatlung"), and Whisper splits or
+ * joins words ("limang pu", "walungdaan", "Nagbentakay"). Bring the number
+ * words and "kay" back to one spelling before the number words are read.
+ * Suffixes: -ng / -g linker, -t for "'t" ("apatnaput lima" = apatnapu't lima).
+ */
+// Tens: written as one word the -pu may be spelled -po ("limampo"); split off
+// it must be "pu", so a polite "po" ("apat na po", "four, po") stays 4.
+const tens = (stem, word) => [new RegExp(`\\b(?:${stem}\\s+pu|${stem}p[ou])(ng|g|t)?\\b`, 'gi'), word];
+
+const SPELLING = [
+  tens('dalawam', 'dalawampu'),
+  tens('tatl[ou]m', 'tatlumpu'),
+  tens('apat\\s?na', 'apatnapu'),
+  tens('lima(?:ng|m)', 'limampu'),
+  tens('anim\\s?na', 'animnapu'),
+  tens('pit[ou]m', 'pitumpu'),
+  tens('wal[ou]m', 'walumpu'),
+  tens('siyam\\s?na', 'siyamnapu'),
+  [/\bsamp[ou](ng|g|t)?\b/gi, 'sampu'],
+  [/\btatl[ou](ng|g)?\b/gi, 'tatlo'],
+  [/\bpit[ou](ng|g)?\b/gi, 'pito'],
+  [/\bwal[ou](ng|g)?\b/gi, 'walo']
+];
+
+function standardizeFilipino(text) {
+  let out = text
+    // "walungdaan" → "walung daan"
+    .replace(/\b(isang|dalawang|tatl[ou]ng|apat\s?na|limang|anim\s?na|pit[ou]ng|wal[ou]ng|siyam\s?na)(daan|raan|libo)\b/gi, '$1 $2')
+    // "Nagbentakay" → "Nagbenta kay", "kayaling Nena" → "kay aling Nena"
+    .replace(/\b(nagbenta|binenta|benta|ibinenta|sold)kay\b/gi, '$1 kay')
+    .replace(/\bkay(aling|mang|kuya|ate|ka)\b/gi, 'kay $1')
+    .replace(/\bna\s(matay)\b/gi, 'na$1');
+  for (const [pattern, word] of SPELLING) {
+    out = out.replace(pattern, (_, suffix = '') => `${word}${suffix.toLowerCase() === 't' ? "'t" : suffix}`);
+  }
+  // Before p/b the -ng linker is said -m ("tatlong patay" → "tatlum patay",
+  // written "tatlumpatay"); runs after the tens so "limampu" stays 50
+  return out.replace(/\b(isa|dalawa|tatl[ou]|lima|pit[ou]|wal[ou])m(?!pu)\s?(?=[pb])/gi, (_, n) => `${n.replace(/u$/i, 'o')}ng `);
+}
+
+/** "100 at 20" → 120, "200 at 45" → 245: digits and number words said together. */
+function joinSpokenParts(text) {
+  return text.replace(/\b(\d+)\s+(?:at|and)\s+(\d+)\b(?![.,]\d)/gi, (all, a, b) => {
+    const [big, small] = [Number(a), Number(b)];
+    const fits = (scale) => big >= scale && big % scale === 0 && small < scale;
+    return fits(1000) || fits(100) ? String(big + small) : all;
+  });
+}
+
+/**
  * Rewrite a spoken sentence into the logbook wording the rules read:
  * number words → digits, kilo → kg, "118 pesos per kilo" → "118/kg",
  * "850 pesos" → "₱850", "ika-26 ng Oktubre" → "Oktubre 26".
  */
 export function normalizeSpoken(text) {
-  return String(text || '')
-    .trim()
-    .replace(/\s+/g, ' ')
+  const words = standardizeFilipino(String(text || '').trim().replace(/\s+/g, ' '))
     .replace(/'t\b/g, ' at') // "dalawampu't lima"
     .replace(/\blabi(?:ng|n|m)[\s-]?(isa|dalawa|tatlo|apat|lima|anim|pito|walo|siyam)\b/gi, (_, u) => String(FIL_TEENS[u.toLowerCase()]))
-    .replace(NUM_RUN, (run) => String(runValue(run)))
+    // "2 daan" (a digit with a Filipino or English hundred) → 200
+    .replace(/\b(\d+)\s+(?:daan|raan|hundred)(?:g|ng)?\b/gi, (_, n) => String(Number(n) * 100))
+    .replace(NUM_RUN, (run) => String(runValue(run)));
+  return joinSpokenParts(words)
     .replace(/(\d+(?:\.\d+)?)\s*(?:k|thousand|libo)\b/gi, (_, n) => String(Math.round(Number(n) * 1000)))
     .replace(/(\d),(?=\d{3}\b)/g, '$1') // "12,500" → "12500" so later steps see one number
     .replace(/\b(?:kilos?|kilograms?|kilogramo|kgs)\b/gi, 'kg')

@@ -16,7 +16,7 @@ import { calcBatchMetrics, liveHeadCount } from '../services/allocationEngine.js
 import { Repository } from '../services/repository.js';
 import { openThresholdModal, openCloseBatchModal } from './modals.js';
 import { showToast } from './toast.js';
-import { isSpeechSupported, startDictation, VOICE_LANGS, getVoiceLang, setVoiceLang, voiceModelInfo } from '../services/speechInput.js';
+import { isSpeechSupported, startDictation, VOICE_LANGS, getVoiceLang, setVoiceLang, voiceModelInfo, warmUpVoiceModel } from '../services/speechInput.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const NA = 'N/A';
@@ -596,7 +596,7 @@ export function renderBatches(
 let _dictation = null; // the recording in progress, if any
 
 /** Mic → transcript → onVoiceResult(text), which parses it and prefills the form. */
-function attachVoiceListeners(container, onVoiceResult) {
+function attachVoiceListeners(container, onVoiceResult, batchNames = []) {
   const micBtn = container.querySelector('#btn-voice');
   const langSelect = container.querySelector('#voice-lang');
   const input = container.querySelector('#voice-transcript');
@@ -650,6 +650,7 @@ function attachVoiceListeners(container, onVoiceResult) {
     say('Starting the microphone…', 'info');
     _dictation = startDictation({
       lang: langSelect?.value || getVoiceLang(),
+      batchNames, // so Whisper expects "batch siyam" etc.
       onStatus: (text, stage) => {
         if (stage !== 'listening') {
           setListening(false);
@@ -677,7 +678,7 @@ function attachVoiceListeners(container, onVoiceResult) {
 export function attachBatchesListeners(container, state, callbacks) {
   const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview, onLoadMoreExpenses, onScanPhoto, onReviewScans, onAiSettings, onVoiceResult } = callbacks;
 
-  attachVoiceListeners(container, onVoiceResult);
+  attachVoiceListeners(container, onVoiceResult, (state.openBatchesData || []).map((d) => d.batch.batch_name));
 
   // Scan logbook: the file input sits inside the button label
   container.querySelector('#btn-ai-settings')?.addEventListener('click', () => onAiSettings?.());
@@ -843,6 +844,7 @@ export function attachBatchesListeners(container, state, callbacks) {
     btn.addEventListener('click', () => {
       const tab = btn.getAttribute('data-panel-tab');
       _batchModalOpen = true;
+      if (isSpeechSupported()) warmUpVoiceModel(); // ready before the user taps Speak
       onTabChange(tab);
     });
   });
