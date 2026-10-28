@@ -7,7 +7,7 @@ import { renderShell, attachShellListeners, renderSyncStatus } from './ui/shell.
 import { openSyncProblemsModal } from './ui/syncProblemsModal.js';
 import { renderLogin, attachLoginListeners } from './ui/loginView.js';
 import { renderDashboard, attachDashboardListeners } from './ui/dashboardView.js';
-import { renderBatches, attachBatchesListeners } from './ui/batchesView.js';
+import { renderBatches, attachBatchesListeners, isEntryModalOpen } from './ui/batchesView.js';
 import { renderHistory, attachHistoryListeners } from './ui/historyView.js';
 import { exportBatch, exportBatchList, exportFarmExpenses } from './services/exportService.js';
 import { openExportModal } from './ui/exportMenu.js';
@@ -82,7 +82,7 @@ async function initApp() {
   } else {
     state.view = 'dashboard';
     // 2. Demo data only for Demo Mode; a real account gets its own records
-    await prepareLocalDataFor(AuthService.getUser());
+    await openLocalDataFor(AuthService.getUser());
   }
 
   // 3. Sync engine subscription
@@ -94,7 +94,7 @@ async function initApp() {
 
   if (syncEngine.isOnline()) {
     // Show records downloaded at start-up (not while the login form is open)
-    syncEngine.syncNow().then(() => AuthService.isLoggedIn() && render());
+    syncEngine.syncNow().then(refreshFromBackground);
   }
 
   // Scan photos that were waiting for the local AI (no internet needed)
@@ -107,6 +107,35 @@ async function initApp() {
 
   // 4. Initial render
   await render();
+}
+
+/**
+ * Match the records on this device to the user who just logged in. Returns
+ * false when that user cannot start yet (Demo Mode while an account's changes
+ * wait to upload; Demo Mode would discard them): they are logged out again.
+ */
+async function openLocalDataFor(user) {
+  const { action, unsynced, ownerEmail } = await prepareLocalDataFor(user);
+  if (action === 'blocked') {
+    await AuthService.logout();
+    state.view = 'login';
+    const changes = unsynced === 1 ? '1 change' : `${unsynced} changes`;
+    showToast(`Demo Mode is not available yet: ${changes} from ${ownerEmail || 'an account'} ${unsynced === 1 ? 'is' : 'are'} not uploaded. Log in ${ownerEmail ? `as ${ownerEmail}` : 'with that account'} while online so ${unsynced === 1 ? 'it uploads' : 'they upload'} first.`, 8000);
+    return false;
+  }
+  if (action === 'keep-unsynced') {
+    showToast('Some records from the previous account are not uploaded yet, so they were kept on this device.', 5000);
+  }
+  return true;
+}
+
+/**
+ * Redraw after something changed in the background (a sync finished, a photo
+ * was scanned), but not over an entry being typed: closing the form redraws.
+ */
+function refreshFromBackground() {
+  if (!AuthService.isLoggedIn() || isEntryModalOpen(appContainer)) return;
+  render();
 }
 
 /** Sync screen (sidebar status): waiting uploads and refused changes, which can be retried or discarded. */
@@ -143,24 +172,29 @@ function updateSyncIndicator() {
   }
 }
 
+// Each render() awaits the database (and the local AI check), so one started
+// earlier can finish later. Only the latest may draw: an older one would put
+// back the page the user just left, under the new page's highlighted nav.
+let renderSeq = 0;
+
 async function render() {
+  const seq = ++renderSeq;
+  const isLatest = () => seq === renderSeq;
+
   if (!AuthService.isLoggedIn() || state.view === 'login') {
+    state.insights = null;
     appContainer.innerHTML = renderLogin();
     attachLoginListeners(appContainer, async () => {
+      if (!(await openLocalDataFor(AuthService.getUser()))) return render();
       state.view = 'dashboard';
-      const action = await prepareLocalDataFor(AuthService.getUser());
-      if (action === 'keep-unsynced') {
-        showToast('Some records from the previous account are not uploaded yet, so they were kept on this device.', 5000);
-      }
       render();
       // A real account downloads its records right away
-      if (syncEngine.isOnline()) syncEngine.syncNow().then(render);
+      if (syncEngine.isOnline()) syncEngine.syncNow().then(refreshFromBackground);
     });
     return;
   }
 
   let contentHtml = '';
-  state.insights = null;
 
   if (state.view === 'dashboard') {
     const [openBatchesData, closedBatchesData] = await Promise.all([
@@ -168,18 +202,24 @@ async function render() {
       Repository.getClosedBatchesWithData()
     ]);
 
-    const insights = await showInsights('dashboard', buildDashboardFacts(openBatchesData, closedBatchesData, localToday()));
-    contentHtml = renderDashboard(openBatchesData, closedBatchesData, state.collapsedBatchIds, insights);
+    const card = await loadInsightsCard('dashboard', buildDashboardFacts(openBatchesData, closedBatchesData, localToday()));
+    if (!isLatest()) return;
+    state.insights = card && { scope: card.scope, facts: card.facts };
+    contentHtml = renderDashboard(openBatchesData, closedBatchesData, state.collapsedBatchIds, card?.insights ?? null);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render, openSync);
     attachDashboardListeners(appContainer, navigate, render, state.collapsedBatchIds, openBatchesData, closedBatchesData);
     attachInsightsCard(appContainer, () => refreshInsightsCard({ force: true }));
 
   } else if (state.view === 'batches') {
-    const [openBatchesData, expenses] = await Promise.all([
+    const [openBatchesData, expenses, importState, voiceModelReady] = await Promise.all([
       loadOpenBatchesData(),
-      Repository.getAllExpenses()
+      Repository.getAllExpenses(),
+      loadImportState(),
+      isVoiceModelCached()
     ]);
+    if (!isLatest()) return;
+    state.insights = null;
 
     // Default selectedBatchId to first open batch if not set
     if (!state.selectedBatchId && openBatchesData.length) {
@@ -195,9 +235,9 @@ async function render() {
       state.expensePreview,
       state.collapsedBatchIds,
       state.expenseVisibleCount,
-      await loadImportState(),
+      importState,
       state.voice,
-      await isVoiceModelCached()
+      voiceModelReady
     );
 
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
@@ -267,11 +307,9 @@ async function render() {
 
   } else if (state.view === 'history') {
     const allBatches = await Repository.getAllBatches();
-    const batchesWithFullData = [];
-    for (const b of allBatches) {
-      const details = await Repository.getBatchFullDetails(b.batch_id);
-      if (details) batchesWithFullData.push(details);
-    }
+    const batchesWithFullData = (await Promise.all(allBatches.map((b) => Repository.getBatchFullDetails(b.batch_id)))).filter(Boolean);
+    if (!isLatest()) return;
+    state.insights = null;
 
     contentHtml = renderHistory(batchesWithFullData, state.historySearch, state.historyStatus);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
@@ -289,10 +327,12 @@ async function render() {
       Repository.getClosedBatchesWithData()
     ]);
 
-    const insights = batchData?.batch
-      ? await showInsights(`batch:${batchId}`, buildBatchFacts(batchData, closedBatchesData, localToday()))
+    const card = batchData?.batch
+      ? await loadInsightsCard(`batch:${batchId}`, buildBatchFacts(batchData, closedBatchesData, localToday()))
       : null;
-    contentHtml = renderSummary(batchData, insights);
+    if (!isLatest()) return;
+    state.insights = card && { scope: card.scope, facts: card.facts };
+    contentHtml = renderSummary(batchData, card?.insights ?? null);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render, openSync);
     attachSummaryListeners(appContainer, navigate, batchData?.batch
@@ -308,11 +348,13 @@ async function render() {
 // AI suggestions (computed numbers → local AI → Suggestions card; advice only)
 // ---------------------------------------------------------------------------
 
-/** Card state for the page being rendered; writes new suggestions in the background when the numbers changed. */
-async function showInsights(scope, facts) {
+/**
+ * The Suggestions card of the page being rendered: { scope, facts, insights }, or null when
+ * the card is switched off. Writes new suggestions in the background when the numbers changed.
+ */
+async function loadInsightsCard(scope, facts) {
   if (getSuggestionsMode() === 'off') return null; // the card is hidden (⚙ Local AI settings)
-  state.insights = { scope, facts };
-  return loadInsights(scope, facts, localToday());
+  return { scope, facts, insights: await loadInsights(scope, facts, localToday()) };
 }
 
 /** Redraw just the Suggestions card (after a background run, or Refresh). */
@@ -518,17 +560,26 @@ async function processQueue() {
   const finished = await processQueuedJobs(openBatches.map((b) => b.batch_name));
   if (finished) {
     showToast(`${finished} scanned ${finished === 1 ? 'photo is' : 'photos are'} ready to review (Batches page).`, 4000);
-    if (state.view === 'batches') render();
+    if (state.view === 'batches') refreshFromBackground();
   }
 }
 
-/** Allocation preview of a not-yet-saved expense, from the local DB. null when no batch is active that day. */
+/**
+ * Allocation preview of a not-yet-saved expense, from the local DB: { rows, values }. rows is
+ * null when no batch is active that day; values are the date and amounts it was made for, so
+ * the redrawn form still shows what was typed.
+ */
 async function buildExpensePreview(date, feedPeso, otherPeso) {
   const fakeExpense = {
     expense_id: 'preview',
     entry_date: date,
     feed_centavos: Math.round(feedPeso * 100),
     other_centavos: Math.round(otherPeso * 100)
+  };
+  const values = {
+    entry_date: date,
+    feed_centavos: fakeExpense.feed_centavos || null,
+    other_centavos: fakeExpense.other_centavos || null
   };
 
   const [allBatches, allMort, allSales] = await Promise.all([
@@ -540,9 +591,9 @@ async function buildExpensePreview(date, feedPeso, otherPeso) {
   const result = computeAllocationsForExpense(fakeExpense, allBatches, allMort, allSales);
   if (!result) {
     showToast(`No batch is active on ${date}. Cannot allocate.`);
-    return null;
+    return { rows: null, values };
   }
-  return result.rows.map((row) => {
+  const rows = result.rows.map((row) => {
     const batch = allBatches.find((b) => b.batch_id === row.batch_id);
     return {
       batchName: batch?.batch_name || row.batch_id,
@@ -550,6 +601,7 @@ async function buildExpensePreview(date, feedPeso, otherPeso) {
       otherShare: row.other_centavos / 100
     };
   });
+  return { rows, values };
 }
 
 // ---------------------------------------------------------------------------
@@ -609,12 +661,7 @@ async function fillFormFromVoice(transcript, openBatches) {
 /** Load all open batches with their full details */
 async function loadOpenBatchesData() {
   const openBatches = await Repository.getOpenBatches();
-  const results = [];
-  for (const b of openBatches) {
-    const details = await Repository.getBatchFullDetails(b.batch_id);
-    if (details) results.push(details);
-  }
-  return results;
+  return (await Promise.all(openBatches.map((b) => Repository.getBatchFullDetails(b.batch_id)))).filter(Boolean);
 }
 
 function navigate(view, batchId = null) {

@@ -1,6 +1,7 @@
 import { openModal, closeModal } from './modals.js';
 import { showToast } from './toast.js';
 import { formatDate } from '../services/calculations.js';
+import { escapeHtml } from './html.js';
 
 const FORMATS = [
   { id: 'xlsx', label: 'Excel' },
@@ -41,7 +42,7 @@ export function renderExportModal(batches, defaultBatchId) {
   const options = batches
     .map((b) => `
       <option value="${b.batch_id}" ${b.batch_id === selectedId ? 'selected' : ''}>
-        ${b.batch_name} · ${b.status} · ${formatDate(b.start_date, true)}
+        ${escapeHtml(b.batch_name)} · ${escapeHtml(b.status)} · ${formatDate(b.start_date, true)}
       </option>`)
     .join('');
 

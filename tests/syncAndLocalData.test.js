@@ -86,8 +86,17 @@ describe('planLocalData', () => {
 
   it('never clears records that are not uploaded yet', () => {
     expect(planLocalData({ owner: 'other-user', target: user, unsynced: 2 })).toBe('keep-unsynced');
-    expect(planLocalData({ owner: null, target: DEMO_OWNER, unsynced: 2 })).toBe('keep-unsynced');
+    expect(planLocalData({ owner: null, target: user, unsynced: 2 })).toBe('keep-unsynced');
     expect(planLocalData({ owner: 'other-user', target: user, unsynced: 0 })).toBe('clear');
+  });
+
+  it('Demo Mode waits while an account’s changes are not uploaded (its simulated sync would discard them)', () => {
+    expect(planLocalData({ owner: user, target: DEMO_OWNER, unsynced: 2 })).toBe('blocked');
+    expect(planLocalData({ owner: null, target: DEMO_OWNER, unsynced: 2 })).toBe('blocked');
+  });
+
+  it('what Demo Mode left behind is never uploaded, so it is cleared even if it was waiting', () => {
+    expect(planLocalData({ owner: DEMO_OWNER, target: user, unsynced: 4 })).toBe('clear');
   });
 });
 

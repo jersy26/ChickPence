@@ -5,7 +5,8 @@ import {
   sumField,
   formatPeso,
   formatPercent,
-  formatDate
+  formatDate,
+  localToday
 } from '../services/calculations.js';
 import { calcBatchMetrics, evalMortalityWarning, liveHeadCount } from '../services/allocationEngine.js';
 import { openThresholdModal } from './modals.js';
@@ -13,6 +14,7 @@ import { Repository } from '../services/repository.js';
 import { showToast } from './toast.js';
 import { renderBatchToggleIcon } from './batchesView.js';
 import { renderInsightsCard } from './insightsCard.js';
+import { escapeHtml } from './html.js';
 
 // Chart.js is only needed for the Dashboard's profit chart, so it is loaded
 // on first use instead of in the main bundle (precached for offline use).
@@ -31,7 +33,6 @@ function loadChart() {
   return chartModule;
 }
 
-const TODAY = new Date().toISOString().slice(0, 10);
 const CHART_FONT = "'Poppins', sans-serif";
 
 let lineChartInstance = null;
@@ -73,6 +74,7 @@ export function getDashboardChartData(closedBatchesWithData = []) {
 export function renderDashboard(openBatchesData, closedBatchesWithData, collapsedBatchIds = new Set(), insights = null) {
   const { last5, avgNetProfit, avgSellingPricePerKg, allClosedSorted } =
     getDashboardChartData(closedBatchesWithData);
+  const today = localToday();
 
   const allCollapsed =
     openBatchesData.length > 0 &&
@@ -88,8 +90,9 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
         const { batch, feed, mortality, sales, allocations } = item;
         const metrics = calcBatchMetrics(batch, allocations, sales, mortality, feed);
         const warn = evalMortalityWarning(batch, mortality);
-        const liveHeads = liveHeadCount(batch, mortality, sales, TODAY);
+        const liveHeads = liveHeadCount(batch, mortality, sales, today);
         const isCollapsed = collapsedBatchIds.has(batch.batch_id);
+        const name = escapeHtml(batch.batch_name);
 
         return `
           <div class="card-box dash-batch-card dash-animate" id="dash-batch-card-${batch.batch_id}" style="--dash-delay:${0.15 + idx * 0.05}s;margin-bottom: 10px;">
@@ -101,12 +104,12 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
                   data-action="toggle-dash-batch-collapse"
                   data-batch-id="${batch.batch_id}"
                   title="${isCollapsed ? 'Maximize' : 'Minimize'}"
-                  aria-label="${isCollapsed ? 'Maximize ' + batch.batch_name : 'Minimize ' + batch.batch_name}"
+                  aria-label="${isCollapsed ? 'Maximize' : 'Minimize'} ${name}"
                   aria-expanded="${!isCollapsed}"
                 >
                   ${renderBatchToggleIcon(isCollapsed)}
                 </button>
-                <b style="font-size: 15px;">${batch.batch_name}</b>
+                <b style="font-size: 15px;">${name}</b>
               </div>
               <span class="text-mut">Started ${formatDate(batch.start_date, true)} · <b>${liveHeads.toLocaleString()}</b> live</span>
             </div>
@@ -125,7 +128,7 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
                   <span class="stat-label">Mortality</span>
                 </div>
               </div>
-              ${warn.mortalityFlag ? `<div class="flag-alert" style="margin-top:8px;">⚠ Mortality ${formatPercent(warn.mortalityRate)} exceeds threshold (${warn.mortalityThreshold}%)</div>` : ''}
+              ${warn.mortalityFlag ? `<div class="flag-alert" style="margin-top:8px;">⚠ Mortality ${formatPercent(warn.mortalityRate)} exceeds threshold (${escapeHtml(warn.mortalityThreshold)}%)</div>` : ''}
             </div>
           </div>`;
       }).join('')
@@ -137,13 +140,15 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
   const warningsHtml = openBatchesData.length
     ? openBatchesData.map((item) => {
         const warn = evalMortalityWarning(item.batch, item.mortality);
+        const name = escapeHtml(item.batch.batch_name);
+        const limit = escapeHtml(warn.mortalityThreshold);
         if (!warn.mortalityFlag && warn.mortalityThreshold == null) {
-          return `<div class="ok-line text-mut">${item.batch.batch_name}: no mortality threshold set</div>`;
+          return `<div class="ok-line text-mut">${name}: no mortality threshold set</div>`;
         }
         if (warn.mortalityFlag) {
-          return `<div class="flag-alert"><span>⚠ ${item.batch.batch_name}: Mortality ${formatPercent(warn.mortalityRate)} exceeds ${warn.mortalityThreshold}%</span></div>`;
+          return `<div class="flag-alert"><span>⚠ ${name}: Mortality ${formatPercent(warn.mortalityRate)} exceeds ${limit}%</span></div>`;
         }
-        return `<div class="ok-line">✓ ${item.batch.batch_name}: Mortality ${formatPercent(warn.mortalityRate)} / limit ${warn.mortalityThreshold}%</div>`;
+        return `<div class="ok-line">✓ ${name}: Mortality ${formatPercent(warn.mortalityRate)} / limit ${limit}%</div>`;
       }).join('')
     : `<div class="text-mut">No open batches to monitor.</div>`;
 
@@ -164,10 +169,8 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
       </div>
     </div>
 
-    ${insights ? `<div class="dash-animate" style="--dash-delay:.03s;">${renderInsightsCard(insights)}</div>` : ''}
-
     <div class="dash-section-label" style="margin-top:4px;">Performance</div>
-    <div class="card-box dash-chart-card dash-animate" style="--dash-delay:.05s;">
+    <div class="card-box dash-chart-card dash-animate" style="--dash-delay:.03s;">
       <div class="dash-chart-head">
         <h2>Net Profit Trend</h2>
         <span class="text-mut">All closed batches over time</span>
@@ -184,6 +187,8 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
         </div>
       </div>
     </div>
+
+    ${insights ? `<div class="dash-animate" style="--dash-delay:.05s;">${renderInsightsCard(insights)}</div>` : ''}
 
     <div class="flex-row" style="margin:4px 0 6px;align-items:center;">
       <div class="dash-section-label">Open Batches</div>

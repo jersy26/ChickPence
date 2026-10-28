@@ -115,7 +115,20 @@ export const AuthService = {
     if (isSupabaseConfigured()) {
       const supabase = getSupabase();
       if (supabase) {
-        await supabase.auth.signOut();
+        // 'local': this device only. The default ('global') also ends the login on every
+        // other phone or PC of this account, and they cannot log in again while offline.
+        let failed;
+        try {
+          ({ error: failed } = await supabase.auth.signOut({ scope: 'local' }));
+        } catch (err) {
+          failed = err;
+        }
+        // Offline with an expired login, supabase-js gives up without removing it, and
+        // the next start would open the account again: remove the saved login here.
+        if (failed) {
+          localStorage.removeItem(supabase.auth.storageKey);
+          localStorage.removeItem(`${supabase.auth.storageKey}-code-verifier`);
+        }
       }
     }
     currentUser = null;

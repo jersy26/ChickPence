@@ -1,6 +1,7 @@
 import { getSupabaseCredentials, setSupabaseCredentials, isSupabaseConfigured } from '../services/supabaseClient.js';
 import { syncEngine } from '../services/syncEngine.js';
 import { showToast } from './toast.js';
+import { escapeHtml } from './html.js';
 
 export function openModal(htmlContent) {
   const modalContainer = document.getElementById('modal');
@@ -37,11 +38,11 @@ export function openThresholdModal(batch, onSave) {
       <h2>Edit Batch Thresholds</h2>
       <button class="btn-icon" id="btn-close-modal">✕</button>
     </div>
-    <div class="text-mut">Set a mortality warning limit for <b>${batch.batch_name}</b>. An alert will appear when the actual rate exceeds this value.</div>
+    <div class="text-mut">Set a mortality warning limit for <b>${escapeHtml(batch.batch_name)}</b>. An alert will appear when the actual rate exceeds this value.</div>
 
     <label class="form-field">
       Mortality Threshold (%) · optional
-      <input id="input-mt" type="number" min="0" max="100" step="0.1" value="${mtVal}" placeholder="e.g. 5.0" />
+      <input id="input-mt" type="number" min="0" max="100" step="0.1" value="${escapeHtml(mtVal)}" placeholder="e.g. 5.0" />
     </label>
 
     <div class="flex-row" style="margin-top: 10px;">
@@ -73,7 +74,7 @@ export function openCloseBatchModal(batch, salesCount, onConfirm) {
 
     ${
       hasSales
-        ? `<p class="text-mut">Closing <b>${batch.batch_name}</b> sets its end date and locks records into read-only mode. The final Batch Summary report will open.</p>`
+        ? `<p class="text-mut">Closing <b>${escapeHtml(batch.batch_name)}</b> sets its end date and locks records into read-only mode. The final Batch Summary report will open.</p>`
         : `<div class="flag-alert">
              <span>⚠ <b>No sales recorded</b> for this batch. Closing now means revenue and profit will be ₱0. Are you sure?</span>
            </div>`
@@ -107,12 +108,12 @@ export function openSupabaseConfigModal(onConfigChanged) {
 
     <label class="form-field">
       Supabase Project URL
-      <input id="input-sb-url" type="text" placeholder="https://xyzcompany.supabase.co" value="${url || ''}" />
+      <input id="input-sb-url" type="text" placeholder="https://xyzcompany.supabase.co" value="${escapeHtml(url || '')}" />
     </label>
 
     <label class="form-field">
       Supabase Anon API Key
-      <input id="input-sb-key" type="password" placeholder="eyJhbGciOiJIUzI1NiIsInR5..." value="${key || ''}" />
+      <input id="input-sb-key" type="password" placeholder="eyJhbGciOiJIUzI1NiIsInR5..." value="${escapeHtml(key || '')}" />
     </label>
 
     <div class="flex-row" style="margin-top: 12px;">

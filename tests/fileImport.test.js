@@ -135,7 +135,7 @@ describe('ChickPence exports read back', () => {
     const result = tablesToEntries([{ name: '', rows }], { today, batches, fileName: `${exportName}.pdf` });
     expect(result.entries.map(pick).sort(byDateType)).toEqual(expectedFromExport);
     expect(result.shares).toBe(1);
-  });
+  }, 20000); // jsPDF + pdf.js: over 5 s when the other test files run alongside on a slow PC
 });
 
 describe('farm expenses exported and read back', () => {

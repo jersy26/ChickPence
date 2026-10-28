@@ -16,11 +16,15 @@ const ISOLATION_HEADERS = {
 // or another computer reaches it at the same origin as the app: no CORS setup
 // (OLLAMA_ORIGINS) and no http call from an https page. Ollama checks the
 // Origin header, so it is dropped; the request comes from this server.
+// Only the two calls the app makes are passed on: served on the network
+// (dev:lan / preview:lan), the rest of Ollama's API (pull, delete, create…)
+// would be open to anyone on the Wi-Fi.
 const OLLAMA_TARGET = process.env.OLLAMA_PROXY_TARGET || 'http://localhost:11434';
 const OLLAMA_PROXY = {
   '/ollama': {
     target: OLLAMA_TARGET,
     changeOrigin: true,
+    bypass: (req) => (/^\/ollama\/api\/(tags|chat)(\?|$)/.test(req.url) ? undefined : false), // false → 404
     rewrite: (path) => path.replace(/^\/ollama/, ''),
     configure: (proxy) => proxy.on('proxyReq', (req) => req.removeHeader('origin'))
   }

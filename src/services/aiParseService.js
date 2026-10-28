@@ -11,6 +11,9 @@
 import { db } from '../db/dexie.js';
 import { checkLocalLlm, transcribeImage, extractEntries } from './localLlm.js';
 import { normalizeSpoken, parseRecord } from './logbookParser.js';
+import { localToday } from './calculations.js';
+
+export { localToday };
 
 export const DRAFT_TYPES = ['expense', 'feed', 'mortality', 'sale'];
 export const LOW_CONFIDENCE = 0.7;
@@ -23,11 +26,6 @@ export const REQUIRED_FIELDS = {
   mortality: ['date', 'batch_id', 'count'],
   sale: ['date', 'batch_id', 'buyer_name', 'quantity_sold', 'weight_kg', 'price_per_kg']
 };
-
-/** Local (not UTC) date as YYYY-MM-DD, so "kahapon" resolves correctly before 8 AM PH time. */
-export function localToday(d = new Date()) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 /**
  * Why the local AI cannot scan right now (Ollama not running, model missing),

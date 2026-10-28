@@ -8,8 +8,11 @@
 
 import { openModal, closeModal } from './modals.js';
 import { showToast } from './toast.js';
+import { escapeHtml } from './html.js';
 import { Repository } from '../services/repository.js';
 import { LOW_CONFIDENCE, validateDraft, draftToSave } from '../services/aiParseService.js';
+
+export { escapeHtml };
 
 const TYPE_LABELS = { expense: 'Farm Expense', feed: 'Feed', mortality: 'Mortality', sale: 'Sale' };
 
@@ -27,15 +30,6 @@ const FIELDS = {
 };
 
 const INTEGER_FIELDS = new Set(['count', 'quantity_sold']);
-
-export function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 function field(d, name, label, type, inner) {
   const flag = d.uncertain.has(name) ? ' is-uncertain' : '';
