@@ -1,7 +1,7 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-29
-**Branch:** `main` (last feature merge: file import; the voice test fixes and file import are not pushed yet)
+**Branch:** `main` (last feature merge: file import; everything is pushed to GitHub)
 **Tests:** 173 passing (`npm test`)
 
 ---
