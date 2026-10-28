@@ -45,7 +45,8 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // mjs: the pdf.js worker (PDF import) and the ONNX runtime loader (voice) work offline too
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,ico,woff2}'],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.origin === self.location.origin,

@@ -1,14 +1,14 @@
 # ChickPence — Session Handoff
 
-**Date:** 2026-10-28
-**Branch:** `main` (last feature merge: voice test fixes; everything before it is pushed)
-**Tests:** 158 passing (`npm test`)
+**Date:** 2026-10-29
+**Branch:** `main` (last feature merge: file import; the voice test fixes and file import are not pushed yet)
+**Tests:** 173 passing (`npm test`)
 
 ---
 
 ## 1. Goal of this workstream
 
-ChickPence is mainly a reporting system, so we are adding four features:
+ChickPence is mainly a reporting system, so we are adding these features:
 
 | Phase | Feature | Status |
 |---|---|---|
@@ -17,6 +17,7 @@ ChickPence is mainly a reporting system, so we are adding four features:
 | 3 | Voice input in the entry form | ✅ Done, merged; tested with Filipino/Taglish recordings through Edge's mic path and offline (a real person speaking not tested yet) |
 | 3b | Voice privacy: Web Speech (sent audio to Google/Microsoft) replaced by Whisper running in the browser | ✅ Done, merged; audio never leaves the device |
 | 4 | AI suggestions (local LLM) | ✅ Done, merged, tested in the app with Ollama on this PC |
+| 5 | Import logs from a file (Excel, CSV, PDF, photo) | ✅ Done, merged, tested in the app with sample files |
 
 ### Architecture (updated: local LLM, no cloud AI)
 
@@ -267,6 +268,35 @@ Local branch `feature/voice-input` still exists (not pushed; already merged).
 ### Still open
 - No switch to turn automatic suggestions off (e.g. on a slow PC). The ⚙ Local AI settings modal would be the place.
 - The model is small: wording is sometimes generic ("check feed quality"). The numbers and the better/worse direction come from code, so they are always right.
+
+---
+
+## 5b. Done: import logs from a file (Excel, CSV, PDF, photo)
+
+### What the user sees
+- **📄 Import file** next to 📷 Scan logbook on the Batches page (accepts `.xlsx`, `.csv`, `.pdf` and images).
+- The entries go into the same review modal as a scanned logbook, titled **Review Imported Entries** ("Found 5 entries in farm-log.xlsx"), with a Notes line on what was left out. Nothing is saved until **Save selected**, which uses `Repository.save*` like the manual form.
+- Rows already in ChickPence (same type, date, batch and values, e.g. importing a file twice or an export back) are marked **Already saved** and left unticked.
+- A **photo** goes to the logbook scan (section 3). A **scanned PDF** (no text layer) is split into page images (up to 10) that join the photo queue and appear under **Review scanned**.
+- An old `.xls` / `.ods` file gets "Save the spreadsheet as Excel Workbook (.xlsx) or CSV first".
+
+### How a file is read (`src/services/fileImport.js`)
+1. **Loading:** `.xlsx` with `read-excel-file/universal` (every sheet), `.csv` with a small built-in parser (`,` `;` or tab, quotes, BOM, undoes the export's `'` formula guard), `.pdf` with `pdfjs-dist`: the text layer is grouped into lines and wide gaps split cells (`textItemsToRows`), so PDF tables keep their columns. Both libraries are lazy-loaded and precached for offline use.
+2. **Header rows** (`headerField`): a row is a header when two or more cells are known columns and one is a date. English and Filipino names: Date/Petsa, Type/Uri, Batch, Buyer/Mamimili, Heads/Ulo, Weight/Timbang, Price per kg/Presyo, Deaths/Patay, Feed (kg)/Quantity (kg)/Dami, Feed cost, Other cost, Amount/Halaga/Gastos, Description/Paglalarawan; "Cumulative" is ignored.
+3. **Type of each row:** a Type column ("Gastos", "Feed", "Patay", "Benta"…), else the sheet or section name (Expenses/Feed/Mortality/Sales, Gastos/Patay/Benta), else the columns with values. Chick purchases, Summary sheets and the batch history are skipped.
+4. **Values:** dates as Excel dates, ISO, M/D/YYYY (D/M when the first part is over 12), Excel serials or month names; numbers with ₱, commas and units. An expense with one Amount column goes to feed cost when its description mentions feed (patuka, sako, feeds…), otherwise to other costs. A sale without a price gets total ÷ weight.
+5. **Batch:** from a Batch column, else from an open batch named in the file name ("ChickPence_Batch_2026-09_….xlsx"), else the usual rule (the only open batch, or "Choose batch").
+6. **Rows without a header** (a logbook typed into cells) are read by the logbook rules (`parseRecord`), with the date carried down. Rows that are neither are listed in the notes.
+7. **ChickPence's own batch reports:** their expense rows are each batch's *allocated share*, not the farm expense, so they are left out with a note (detected by the "Allocation basis" column or a `ChickPence_` file name). Feed, mortality and sales import back exactly.
+
+### Tested
+- Unit tests (`tests/fileImport.test.js`, 15): CSV parsing, dates and numbers, headers in both languages, **round trips of ChickPence's own Excel, CSV and PDF exports** (written and read back in Node), Filipino tables, a sheet per type, typed logbook lines, missing dates, duplicates, review-modal text.
+- In the app (Edge over DevTools, real file input): a Filipino-header workbook (5 entries correct), a CSV with a Type column (3 correct, 1 empty row skipped), a ChickPence PDF report (3 correct, expense share left out), saving 5 entries (7 s) and importing the same file again (all 5 marked Already saved), and a scanned PDF (page queued for the photo scan). The modal fits a 390 px phone screen.
+
+### Still open
+- The expense rows of a ChickPence batch report cannot be imported (they are shares). Restoring a whole farm from exports would need an export of the farm expenses themselves.
+- `.xls` (Excel 97–2003) and `.ods` are not read; save as `.xlsx` or CSV.
+- Unrecognised lines are only listed in the notes; unlike the photo scan, the local AI is not asked to read them.
 
 ---
 

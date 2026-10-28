@@ -16,6 +16,7 @@ import { calcBatchMetrics, liveHeadCount } from '../services/allocationEngine.js
 import { Repository } from '../services/repository.js';
 import { openThresholdModal, openCloseBatchModal } from './modals.js';
 import { showToast } from './toast.js';
+import { IMPORT_ACCEPT } from '../services/fileImport.js';
 import { isSpeechSupported, startDictation, VOICE_LANGS, getVoiceLang, setVoiceLang, voiceModelInfo, warmUpVoiceModel } from '../services/speechInput.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -48,6 +49,10 @@ export function renderScanActions(importState) {
     <label class="btn-action scan-btn ${unavailableReason ? 'is-warn' : ''}" title="${escapeAttr(title)}">
       📷 Scan logbook${unavailableReason ? ' <span class="scan-status">· AI off</span>' : ''}${waiting > 0 ? ` <span class="text-mut">(${waiting} waiting)</span>` : ''}
       <input type="file" id="input-scan-logbook" accept="image/*" capture="environment" hidden />
+    </label>
+    <label class="btn-action scan-btn" title="Add logs from an Excel (.xlsx), CSV or PDF file, or a photo; you review them before anything is saved">
+      📄 Import file
+      <input type="file" id="input-import-file" accept="${IMPORT_ACCEPT}" hidden />
     </label>
     <button class="btn-action btn-ai-settings" id="btn-ai-settings" title="Local AI settings" aria-label="Local AI settings">⚙</button>
   `;
@@ -676,7 +681,7 @@ function attachVoiceListeners(container, onVoiceResult, batchNames = []) {
 }
 
 export function attachBatchesListeners(container, state, callbacks) {
-  const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview, onLoadMoreExpenses, onScanPhoto, onReviewScans, onAiSettings, onVoiceResult } = callbacks;
+  const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview, onLoadMoreExpenses, onScanPhoto, onImportFile, onReviewScans, onAiSettings, onVoiceResult } = callbacks;
 
   attachVoiceListeners(container, onVoiceResult, (state.openBatchesData || []).map((d) => d.batch.batch_name));
 
@@ -687,6 +692,12 @@ export function attachBatchesListeners(container, state, callbacks) {
     const file = scanInput.files?.[0];
     scanInput.value = ''; // allow picking the same photo again
     if (file) onScanPhoto?.(file);
+  });
+  const importInput = container.querySelector('#input-import-file');
+  importInput?.addEventListener('change', () => {
+    const file = importInput.files?.[0];
+    importInput.value = ''; // allow importing the same file again
+    if (file) onImportFile?.(file);
   });
   container.querySelector('#btn-review-scans')?.addEventListener('click', () => onReviewScans?.());
 
