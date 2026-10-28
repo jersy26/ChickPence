@@ -243,8 +243,15 @@ export async function transcribeImage(imageBase64, { signal } = {}) {
  * The rule-based parser reads the usual logbook lines instantly; only lines it
  * does not recognise go to the text model (slow on CPU, so as few as possible).
  */
-export async function extractEntries(text, { today, batches, signal, onProgress } = {}) {
-  const records = splitRecords(text);
+export async function extractEntries(text, options = {}) {
+  return extractFromRecords(splitRecords(text), options);
+}
+
+/**
+ * Same as extractEntries for records that are already one entry each (e.g.
+ * spreadsheet rows the import could not read), so lines are not joined.
+ */
+export async function extractFromRecords(records, { today, batches, signal, onProgress } = {}) {
   if (!records.length) return { entries: [], notes: 'No text was found.', records };
 
   const { entries, unparsed } = parseRecords(records, { today, batches });

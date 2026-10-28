@@ -17,6 +17,7 @@ import { db } from './db/dexie.js';
 import { showToast } from './ui/toast.js';
 import { openImportReviewModal, openScanProgressModal } from './ui/importReviewModal.js';
 import { openLocalAiModal } from './ui/localAiModal.js';
+import { extractFromRecords } from './services/localLlm.js';
 import { attachInsightsCard, replaceInsightsCard } from './ui/insightsCard.js';
 import { isVoiceModelCached } from './services/speechInput.js';
 import { fileKind, readLogFile, markDuplicates, importNotes } from './services/fileImport.js';
@@ -457,6 +458,9 @@ async function importLogFile(file, openBatches) {
     return render();
   }
 
+  let aiNotes = '';
+  if (result.unread.length) ({ result, aiNotes } = await readUnrecognisedWithAi(result, file.name, openBatches));
+
   const [expenses, feed, mortality, sales] = await Promise.all([
     db.expenses.toArray(), db.feed_logs.toArray(), db.mortality_logs.toArray(), db.sales.toArray()
   ]);
@@ -464,11 +468,48 @@ async function importLogFile(file, openBatches) {
   openImportReviewModal({
     drafts,
     openBatches,
-    notes: importNotes(result),
+    notes: [importNotes(result), aiNotes].filter(Boolean).join(' '),
     fileName: file.name,
     onSaved: () => render(),
     onDiscard: () => render()
   });
+}
+
+const MAX_AI_LINES = 40; // the CPU model needs about half a minute per line
+
+/**
+ * Offer to let the local AI read the lines the import rules did not
+ * recognise. Returns the result with those entries added (they are drafts
+ * like the rest), and a note on what the AI could not read.
+ */
+async function readUnrecognisedWithAi(result, fileName, openBatches) {
+  if (await aiUnavailableReason()) return { result, aiNotes: '' };
+  const lines = result.unread.slice(0, MAX_AI_LINES);
+  const ask = `${result.unread.length} ${result.unread.length === 1 ? 'line' : 'lines'} in ${fileName} ${result.unread.length === 1 ? 'was' : 'were'} not recognised.`
+    + ` Let the local AI read ${lines.length < result.unread.length ? `the first ${lines.length}` : 'them'}? This can take a few minutes.`;
+  if (!confirm(ask)) return { result, aiNotes: '' };
+
+  const controller = new AbortController();
+  const progress = openScanProgressModal({ title: `Reading ${fileName}`, onCancel: () => controller.abort() });
+  progress.update(`Reading ${lines.length} ${lines.length === 1 ? 'line' : 'lines'} with the local AI…`);
+  try {
+    const ai = await extractFromRecords(lines, {
+      today: localToday(),
+      batches: openBatches.map((b) => b.batch_name),
+      signal: controller.signal,
+      onProgress: progress.update
+    });
+    progress.close();
+    const read = new Set(ai.entries.map((e) => e.source_text));
+    return {
+      result: { ...result, entries: [...result.entries, ...ai.entries], unread: result.unread.filter((l) => !read.has(l)) },
+      aiNotes: ai.entries.length ? `The local AI read ${ai.entries.length} of the unrecognised lines; check them carefully.` : ''
+    };
+  } catch (err) {
+    progress.close();
+    if (!controller.signal.aborted) showToast(`The local AI could not read them: ${err.message}`, 5000);
+    return { result, aiNotes: '' };
+  }
 }
 
 async function processQueue() {

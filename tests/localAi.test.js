@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { parseRecord, parseRecords, parseDate, parseBatch } from '../src/services/logbookParser.js';
-import { splitRecords, buildExtractPrompt, extractEntries, checkLocalLlm, setLlmSettings } from '../src/services/localLlm.js';
+import { splitRecords, buildExtractPrompt, extractEntries, extractFromRecords, checkLocalLlm, setLlmSettings } from '../src/services/localLlm.js';
 import { renderLocalAiModal } from '../src/ui/localAiModal.js';
 
 const today = '2026-10-28';
@@ -122,6 +122,23 @@ describe('extractEntries', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.entries.map((e) => [e.line, e.type, e.count])).toEqual([[1, 'mortality', 2], [2, 'mortality', 3]]);
     expect(result.entries[1].source_text).toBe('Okt 27 tatlong manok ang nawala');
+  });
+
+  it('keeps spreadsheet rows apart (no date needed to start a record)', async () => {
+    const fetchMock = vi.fn(async (_url, init) => {
+      const body = JSON.parse(init.body);
+      expect(body.messages[1].content).toContain('1. nilinis ang kulungan');
+      expect(body.messages[1].content).toContain('2. tatlong manok ang nawala sa batch 9');
+      return { ok: true, json: async () => ({ message: { content: JSON.stringify({
+        entries: [{ line: 2, type: 'mortality', date: null, batch_hint: 'Batch 2026-09', count: 3, confidence: 0.6, uncertain_fields: ['date'] }],
+        notes: ''
+      }) } }) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await extractFromRecords(['nilinis ang kulungan', 'tatlong manok ang nawala sa batch 9'], ctx);
+    expect(result.records).toHaveLength(2);
+    expect(result.entries.map((e) => [e.line, e.type, e.source_text])).toEqual([[2, 'mortality', 'tatlong manok ang nawala sa batch 9']]);
+    expect(result.notes).toContain('"nilinis ang kulungan"');
   });
 
   it('lists lines neither the rules nor the model could use', async () => {
