@@ -1,8 +1,8 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-28
-**Branch:** `main` (pushed; last feature merge `1de555b`)
-**Tests:** 97 passing (`npm test`)
+**Branch:** `feature/voice-input` (Phase 3, not merged yet; `main` last feature merge `1de555b`)
+**Tests:** 123 passing (`npm test`)
 
 ---
 
@@ -14,7 +14,8 @@ ChickPence is mainly a reporting system, so we are adding four features:
 |---|---|---|
 | 1 | Export reports (Excel, PDF, CSV) | ✅ Done, merged, pushed |
 | 2 | Logbook photo scanning with a **local LLM (Ollama)** + draft review modal | ✅ Done and tested end to end on this PC |
-| 3 | Voice input in the entry form | ⏳ Next |
+| 3 | Voice input in the entry form | ✅ Done on `feature/voice-input` (tested by typing; real speech not tested yet) |
+| 3b | Voice privacy decision (online Web Speech vs local Whisper) | ⏳ Open |
 | 4 | AI suggestions | ⏳ Planned (use the local LLM too) |
 
 ### Architecture (updated: local LLM, no cloud AI)
@@ -145,12 +146,41 @@ Local branches `feature/ai-parse` and `feature/local-llm` still exist (not pushe
 
 ---
 
-## 4. Next: Phase 3 voice input (decided with user)
-- Reuse what Phase 2 built: `parseText(transcript, batchNames)` runs the same rules + local-model fallback, and `normalizeDrafts` / `validateDraft` turn the result into checked drafts. Spoken sentences are freer than logbook lines, so more of them will reach the slow text model; consider extending `logbookParser` with spoken patterns first.
-- A **mic button inside the existing "+ Add New Log" modal**, not a separate import screen.
-- Web Speech API (`fil-PH` / `en-PH`, Taglish) → show the transcript → `parseText` → **prefill the form** → the user taps Save as usual (the existing form acts as the review step).
-- One entry per recording at first. Hide the mic when unsupported (works in Chrome/Edge; limited on iOS Safari; not in Firefox).
-- Privacy: Web Speech sends audio to Google, which conflicts with the local-only AI. Either say so in the PRD privacy section, or use a local speech model (e.g. Whisper on a local server) instead.
+## 4. Done: Phase 3 voice input (branch `feature/voice-input`)
+
+### What the user sees
+- In the **+ Add New Log** modal (new entries only, not when editing): **🎤 Speak**, a language picker (Filipino / English (PH), remembered in localStorage `chickpence_voice_lang`), and a text box with the transcript plus **Fill form**.
+- Say one entry → the words appear live → the form switches to the right tab (Expenses / Feed / Mortality / Sales), picks the batch and fills the fields. Fields to check are highlighted, and a line says which ones. The user taps **Save** as usual, so the form is the review step and saving goes through the existing `Repository.save*` code.
+- A misheard word can be fixed in the text box and read again with **Fill form** (Enter works too). The same box lets you type a sentence without the mic.
+- A spoken expense runs the allocation preview automatically, so **Save Expense** is ready.
+- The mic is hidden where the browser has no speech recognition (Firefox) and disabled offline. A line under it says the browser's speech service sends audio online and nothing is saved until Save.
+
+### How a sentence is read
+1. `normalizeSpoken` (`logbookParser.js`) rewrites speech into logbook wording: Filipino/English number words → digits ("isang daan at limampu" → 150, "dalawampu't lima" → 25, "labing-dalawa" → 12, "12k" → 12000), kilo → kg, "118 pesos per kilo" / "tig 118" → price per kg, "850 pesos" → ₱850, "ika-26 ng Oktubre" → "Oktubre 26", "batch 2026 9" → "Batch 2026-09", and a leading "May 3 patay" ("there are 3 dead") is not read as May 3.
+2. The same `parseRecord` rules as the logbook, with **today** as the default date. Rules added for speech (they also help logbook lines): more verbs (namatay, nagpakain, kumain, nagbenta, sold…), "3 ang namatay" / "patay … ay 5" word order, buyer after "kay"/"to", "at" read as "and" in "120 heads at 245 kg", the batch number is never counted as deaths, and a cost said without "pesos" after bayad/bumili/gastos/paid/bought.
+3. Only when the rules fail, the local text model (`extractEntries`). If the local AI is off, the user is told why and fills the form by hand. Only the first entry is used.
+
+### Files
+| File | Role |
+|---|---|
+| `src/services/speechInput.js` | Web Speech wrapper: `isSpeechSupported`, `startDictation` (interim + final text, keeps interim words when stopped early), `speechErrorMessage`, language setting |
+| `src/services/logbookParser.js` | `normalizeSpoken` + the spoken rules above |
+| `src/services/aiParseService.js` | `parseSpokenEntry` (rules → local AI fallback), `draftToFormPrefill` (draft → tab, batch, form values, fields to check) |
+| `src/ui/batchesView.js` | `renderVoiceBar`, prefill + highlight in the entry form, mic listeners |
+| `src/main.js` | `state.voice`, `fillFormFromVoice`, `buildExpensePreview` (shared by the Preview button and voice) |
+| `src/style.css` | `.voice-*` styles, `.form-field .is-uncertain` |
+| `tests/voiceInput.test.js` | 26 tests: number words, spoken sentences of every type, written lines unchanged, AI fallback with mocked `fetch`, prefill mapping, dictation with a fake recognizer, rendering |
+
+### Tested
+- Unit tests and a production build pass.
+- In the app (Demo Mode): typed sentences for a sale, an expense (preview ran, Save enabled) and a mortality entry (batch highlighted when two batches are open); a saved entry reached the database, and the modal and voice bar were cleared. Phone width (375 px) fits.
+- **Not tested yet:** real speech through a microphone (the browser pane used for testing cannot speak). Try it in Chrome or Edge on the farm PC or a phone.
+
+### Still open
+- **Privacy:** Chrome/Edge Web Speech sends audio to Google/Microsoft, unlike the local-only photo scanning. It is stated in the app; it still needs a line in the PRD privacy section, or a switch to a local speech model (e.g. Whisper on a local server; `startDictation` is the only part to replace).
+- Web Speech needs internet. Offline, the mic is disabled but typing a sentence still works.
+
+---
 
 ## 5. Phase 4: AI suggestions
 - Use the local LLM (`localLlm.js`) instead of an Edge Function. Send **only computed metrics** (cost breakdown, FCR, mortality trend, margins, `calcDashboardAverages`). No buyer names.
