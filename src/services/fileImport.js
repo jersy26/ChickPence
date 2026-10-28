@@ -505,7 +505,8 @@ export async function readLogFile(file, { today, batches = [] }) {
   } else if (kind === 'spreadsheet') {
     // SheetJS is only loaded for the older formats read-excel-file cannot read
     const XLSX = await import('xlsx');
-    tables = sheetJsTables(XLSX, XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', dense: false }));
+    // cellNF keeps each cell's number format, which is how a date cell is told apart from a number
+    tables = sheetJsTables(XLSX, XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', cellNF: true }));
   } else if (kind === 'pdf') {
     const pdfjs = await loadPdfjs();
     const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;

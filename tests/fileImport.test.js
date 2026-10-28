@@ -194,7 +194,8 @@ describe('files people make themselves', () => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Total deaths', 6]]), 'Summary');
     const data = XLSX.write(wb, { bookType, type: 'array' });
 
-    const tables = sheetJsTables(XLSX, XLSX.read(new Uint8Array(data), { type: 'array' }));
+    const tables = sheetJsTables(XLSX, XLSX.read(new Uint8Array(data), { type: 'array', cellNF: true }));
+    expect(tables[0].rows[1][0]).toEqual(new Date(Date.UTC(2026, 9, 26))); // a date cell, not its serial number
     const result = tablesToEntries(tables, { today, batches, fileName: `log.${bookType}` });
     expect(result.entries.map(pick)).toEqual([
       { type: 'mortality', date: '2026-10-26', batch: 'Batch 2026-09', count: 4 },
