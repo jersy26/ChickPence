@@ -2,11 +2,26 @@ import { db } from '../db/dexie.js';
 import { getSupabase, isSupabaseConfigured } from './supabaseClient.js';
 import { recomputeAllAllocations } from './allocationService.js';
 import { AuthService } from './auth.js';
+import { DEMO_OWNER } from '../db/localData.js';
+
+/** Synced Dexie tables: primary key and Supabase table name. */
+const TABLES = {
+  batches: { pk: 'batch_id', remote: 'batch' },
+  expenses: { pk: 'expense_id', remote: 'expense' },
+  feed_logs: { pk: 'feed_log_id', remote: 'feed_log' },
+  mortality_logs: { pk: 'mortality_id', remote: 'mortality_log' },
+  sales: { pk: 'sale_id', remote: 'sale' }
+};
+
+// PostgREST returns at most max_rows rows per request (1000 by default)
+const PULL_PAGE = 1000;
 
 class SyncEngine {
   constructor() {
     this.isSimulatedOffline = false;
     this.isSyncing = false;
+    this.running = null; // the sync in progress, if any
+    this.rerun = false;  // syncNow() was called during it: run once more when it ends
     this.listeners = new Set();
     this.watchedClients = new WeakSet();
 
@@ -78,110 +93,70 @@ class SyncEngine {
     }
   }
 
-  // Save or update an entity locally and queue for sync
-  async queueUpsert(tableName, record) {
+  /**
+   * Save a record locally and queue its upload (allocations are never synced).
+   * Call it inside a transaction that includes the record's table and
+   * db.outbox, so a record is never saved without its upload being queued (or
+   * the other way round), and call changed() after the transaction.
+   */
+  async writeUpsert(tableName, record) {
     const now = new Date().toISOString();
-    const updatedRecord = {
-      ...record,
+    const updatedRecord = { ...record, updated_at: now };
+    await db[tableName].put(updatedRecord);
+    await db.outbox.add({
+      table_name: tableName,
+      record_id: updatedRecord[this.getPrimaryKeyField(tableName)],
+      action: 'UPSERT',
+      payload: updatedRecord,
       updated_at: now
-    };
+    });
+    return updatedRecord;
+  }
 
-    // 1. Write to local Dexie table immediately
-    const table = db[tableName];
-    if (table) {
-      await table.put(updatedRecord);
-    }
+  /** Soft delete a record locally and queue it; same rules as writeUpsert. */
+  async writeSoftDelete(tableName, recordId) {
+    const existing = await db[tableName].get(recordId);
+    if (!existing) return;
+    const now = new Date().toISOString();
+    const deleted = { ...existing, deleted_at: now, updated_at: now };
+    await db[tableName].put(deleted);
+    await db.outbox.add({
+      table_name: tableName,
+      record_id: recordId,
+      action: 'SOFT_DELETE',
+      payload: deleted,
+      updated_at: now
+    });
+  }
 
-    // 2. Queue in outbox (allocations are NOT synced)
-    if (tableName !== 'allocations') {
-      const primaryKeyField = this.getPrimaryKeyField(tableName);
-      const recordId = updatedRecord[primaryKeyField];
-
-      await db.outbox.add({
-        table_name: tableName,
-        record_id: recordId,
-        action: 'UPSERT',
-        payload: updatedRecord,
-        updated_at: now
-      });
-    }
-
+  /** A local change was saved: show it in the sync status and upload it soon. */
+  changed() {
     this.notifyStatus();
-
-    // 3. Attempt immediate sync if online
     if (this.isOnline()) {
       setTimeout(() => this.syncNow(), 300);
     }
+  }
 
-    return updatedRecord;
+  // Save or update an entity locally and queue for sync
+  async queueUpsert(tableName, record) {
+    const saved = await db.transaction('rw', db[tableName], db.outbox, () => this.writeUpsert(tableName, record));
+    this.changed();
+    return saved;
   }
 
   // Soft delete a record locally and queue for sync
   async queueSoftDelete(tableName, recordId) {
-    const now = new Date().toISOString();
-    const table = db[tableName];
-    const primaryKeyField = this.getPrimaryKeyField(tableName);
-
-    if (table) {
-      const existing = await table.get(recordId);
-      if (existing) {
-        existing.deleted_at = now;
-        existing.updated_at = now;
-        await table.put(existing);
-
-        if (tableName !== 'allocations') {
-          await db.outbox.add({
-            table_name: tableName,
-            record_id: recordId,
-            action: 'SOFT_DELETE',
-            payload: existing,
-            updated_at: now
-          });
-        }
-      }
-    }
-
-    this.notifyStatus();
-
-    if (this.isOnline()) {
-      setTimeout(() => this.syncNow(), 300);
-    }
+    await db.transaction('rw', db[tableName], db.outbox, () => this.writeSoftDelete(tableName, recordId));
+    this.changed();
   }
 
   getPrimaryKeyField(tableName) {
-    switch (tableName) {
-      case 'batches':
-        return 'batch_id';
-      case 'daily_costs':
-        return 'cost_id';
-      case 'expenses':
-        return 'expense_id';
-      case 'feed_logs':
-        return 'feed_log_id';
-      case 'mortality_logs':
-        return 'mortality_id';
-      case 'sales':
-        return 'sale_id';
-      default:
-        return 'id';
-    }
+    if (tableName === 'daily_costs') return 'cost_id'; // v1 table, kept for the Dexie upgrade
+    return TABLES[tableName]?.pk || 'id';
   }
 
   getSupabaseTableName(dexieTable) {
-    switch (dexieTable) {
-      case 'batches':
-        return 'batch';
-      case 'expenses':
-        return 'expense';
-      case 'feed_logs':
-        return 'feed_log';
-      case 'mortality_logs':
-        return 'mortality_log';
-      case 'sales':
-        return 'sale';
-      default:
-        return dexieTable;
-    }
+    return TABLES[dexieTable]?.remote || dexieTable;
   }
 
   /**
@@ -208,28 +183,59 @@ class SyncEngine {
     });
   }
 
-  async syncNow() {
-    if (this.isSyncing) return;
-    this.isSyncing = true;
-    this.notifyStatus();
+  /**
+   * Upload what is waiting and download the latest records. A call while a
+   * sync is running joins it, and that sync then runs once more: whatever was
+   * saved meanwhile was not in its upload, and would otherwise wait for the
+   * next change or reconnect. Resolves when everything is done.
+   */
+  syncNow() {
+    if (this.running) {
+      this.rerun = true;
+      return this.running;
+    }
+    this.running = (async () => {
+      this.isSyncing = true;
+      this.notifyStatus();
+      try {
+        let result;
+        do {
+          this.rerun = false;
+          result = await this.syncOnce();
+        } while (this.rerun);
+        return result;
+      } finally {
+        this.running = null;
+        this.isSyncing = false;
+        this.notifyStatus();
+      }
+    })();
+    return this.running;
+  }
 
+  async syncOnce() {
     try {
       const supabase = getSupabase();
       const user = AuthService.getUser();
 
-      // Demo/Local mode: simulate sync by clearing outbox. Demo records are
-      // never uploaded, even when Supabase is configured.
-      if (!supabase || user?.isDemo) {
-        const outboxItems = await db.outbox.toArray();
-        if (outboxItems.length > 0) {
+      // Demo Mode: simulate sync by clearing the outbox. Demo records are never
+      // uploaded, even when Supabase is configured. Only while the records here
+      // are the demo's: an account's changes that are not uploaded yet stay.
+      if (user?.isDemo) {
+        const owner = await db.app_state.get('data_owner');
+        if (owner?.value !== DEMO_OWNER) return { success: false, count: 0, reason: 'not-demo-data' };
+        const count = await db.outbox.count();
+        if (count > 0) {
           await new Promise((resolve) => setTimeout(resolve, 800));
           await db.outbox.clear();
         }
-        return { success: true, count: outboxItems.length };
+        return { success: true, count };
       }
 
       // Logged out: keep anything not uploaded yet for the next login
       if (!user) return { success: false, count: 0, reason: 'signed-out' };
+      // No Supabase settings (they were removed): keep it all until they are back
+      if (!supabase) return { success: false, count: 0, reason: 'no-server' };
 
       // Supabase mode. Never upload without the user's login: the database
       // would refuse it (row-level security) and the items would look broken.
@@ -274,9 +280,6 @@ class SyncEngine {
     } catch (err) {
       console.error('Sync failure:', err);
       return { success: false, error: err };
-    } finally {
-      this.isSyncing = false;
-      this.notifyStatus();
     }
   }
 
@@ -288,48 +291,73 @@ class SyncEngine {
     if (!supabase) return false;
 
     let anyChanged = false;
-
-    try {
-      const tables = ['batch', 'expense', 'feed_log', 'mortality_log', 'sale'];
-      for (const t of tables) {
-        const { data, error } = await supabase.from(t).select('*');
-        if (error) {
-          console.error(`Pull error on ${t}:`, error);
-          continue;
-        }
-        if (data && data.length) {
-          const dexieTable =
-            t === 'batch'
-              ? 'batches'
-              : t === 'expense'
-              ? 'expenses'
-              : t === 'feed_log'
-              ? 'feed_logs'
-              : t === 'mortality_log'
-              ? 'mortality_logs'
-              : 'sales';
-
-          await db.transaction('rw', db[dexieTable], async () => {
-            for (const row of data) {
-              const pk = this.getPrimaryKeyField(dexieTable);
-              const local = await db[dexieTable].get(row[pk]);
-              if (!local || new Date(row.updated_at) >= new Date(local.updated_at)) {
-                await db[dexieTable].put(row);
-                anyChanged = true;
-              }
-            }
-          });
-        }
+    for (const [dexieTable, { pk, remote }] of Object.entries(TABLES)) {
+      let rows;
+      try {
+        rows = await fetchAllRows(supabase, remote, pk);
+      } catch (error) {
+        console.error(`Pull error on ${remote}:`, error);
+        continue;
       }
-    } catch (err) {
-      console.error('Pull from Supabase failed:', err);
-    }
+      if (!rows.length) continue;
 
+      const changed = await db.transaction('rw', db[dexieTable], async () => {
+        const local = await db[dexieTable].bulkGet(rows.map((row) => row[pk]));
+        const replacing = rows.filter((row, i) => replacesLocal(row, local[i]));
+        if (replacing.length) await db[dexieTable].bulkPut(replacing);
+        return replacing.length > 0;
+      });
+      anyChanged = anyChanged || changed;
+    }
     return anyChanged;
   }
 }
 
 export const syncEngine = new SyncEngine();
+
+/**
+ * Every row of a Supabase table. One plain select stops at the server's
+ * max_rows (1000 by default), which silently left out the rest, so rows are
+ * read in pages keyed on the primary key (rows added meanwhile do not shift
+ * the pages). `count` is how many rows were left to read, so a page that
+ * holds them all ends the table without one more request.
+ */
+export async function fetchAllRows(supabase, table, pk, pageSize = PULL_PAGE) {
+  const rows = [];
+  let after = null;
+  for (;;) {
+    let query = supabase.from(table).select('*', { count: 'exact' }).order(pk, { ascending: true }).limit(pageSize);
+    if (after !== null) query = query.gt(pk, after);
+    const { data, error, count } = await query;
+    if (error) throw error;
+    rows.push(...data);
+    if (!data.length || (count != null && data.length >= count)) return rows;
+    after = data[data.length - 1][pk];
+  }
+}
+
+/**
+ * Does a downloaded row replace the local copy? The newer one wins (as by
+ * updated_at). At the same time it is the same change, e.g. this device's own
+ * upload coming back: the server's copy only replaces it when it differs (the
+ * database rounds decimals), so unchanged rows are not rewritten and cost
+ * sharing is not recomputed after every sync.
+ */
+export function replacesLocal(remote, local) {
+  if (!local) return true;
+  const remoteTime = Date.parse(remote.updated_at);
+  const localTime = Date.parse(local.updated_at);
+  if (Number.isNaN(localTime)) return true;
+  if (remoteTime !== localTime) return remoteTime > localTime;
+  return Object.keys(remote).some((key) => !sameValue(key, remote[key], local[key]));
+}
+
+function sameValue(key, a, b) {
+  // created_at is a TIMESTAMP without time zone on the server, so it reads back in another form
+  if (key === 'created_at') return true;
+  if (key === 'updated_at' || key === 'deleted_at') return (a ? Date.parse(a) : null) === (b ? Date.parse(b) : null);
+  return a === b || (a == null && b == null);
+}
 
 /** Outbox items the server refused at least once, oldest first. */
 export const outboxProblems = (items) => items.filter((i) => i.last_error).sort((a, b) => a.id - b.id);

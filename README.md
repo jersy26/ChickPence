@@ -341,7 +341,7 @@ Ollama stays as it is (only reachable from the farm PC). The app's own server pa
 
 Plain `npm run dev -- --host` (http) also works for scanning, but then the microphone is hidden on the phone.
 
-The `/ollama` pass-through exists only in `npm run dev` / `npm run preview`. If you host the built app elsewhere, give that server the same pass-through (to `http://localhost:11434`, without the `Origin` header), or set `OLLAMA_HOST` and `OLLAMA_ORIGINS` on the farm PC and use `http://<IP>:11434`.
+The `/ollama` pass-through exists only in `npm run dev` / `npm run preview`, and it passes on only the two calls the app makes (`/api/tags` and `/api/chat`), so devices on the Wi-Fi cannot pull or delete models through it. If you host the built app elsewhere, give that server the same pass-through (only those two paths, to `http://localhost:11434`, without the `Origin` header), or set `OLLAMA_HOST` and `OLLAMA_ORIGINS` on the farm PC and use `http://<IP>:11434` (that opens all of Ollama to the network).
 
 ---
 
@@ -444,7 +444,7 @@ detach vdisk
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. In the **SQL Editor**, run the three files in `supabase/migrations/` in order. Read the comments at the top of the v2 file first if the project already has data. A project set up before October 2026 needs only `20261028000000_v3_feed_grams.sql`; without it, feed logs don't sync.
-3. **Authentication** → **Users** → **Add user**.
+3. **Authentication** → **Sign In / Providers**: turn **off** "Allow new users to sign up". Every signed-in user can read and change all farm records, and the anon key is inside the app, so with sign-ups on anyone could make an account and get them. (Local Supabase has sign-ups off in `supabase/config.toml`.) Then **Authentication** → **Users** → **Add user**.
 4. **Project Settings** → **API**: copy the **Project URL** and the **anon public** key into `.env`.
 
 ### Working offline with a Supabase account

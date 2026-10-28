@@ -58,6 +58,14 @@ export const formatNumber = (val, decimals = 2) => {
   return Number(val).toLocaleString('en-PH', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 };
 
+/**
+ * Today on this device as YYYY-MM-DD. Not toISOString(): that is the UTC date,
+ * which in the Philippines is still yesterday until 8 AM.
+ */
+export function localToday(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export const formatDate = (dateStr, includeYear = false) => {
   if (!dateStr) return '—';
   try {

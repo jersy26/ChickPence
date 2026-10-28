@@ -1,6 +1,5 @@
 /**
  * batchesView.js
- * Replaces activeBatchView.js.
  * Shows all open batches; allows creating new batches, recording mortality/feed/sales per batch,
  * and recording farm-level expenses with an allocation preview.
  */
@@ -10,16 +9,17 @@ import {
   formatPeso,
   formatPesoCentavos,
   formatPercent,
-  formatDate
+  formatDate,
+  localToday
 } from '../services/calculations.js';
 import { calcBatchMetrics, liveHeadCount } from '../services/allocationEngine.js';
 import { Repository } from '../services/repository.js';
 import { openThresholdModal, openCloseBatchModal } from './modals.js';
 import { showToast } from './toast.js';
+import { escapeHtml } from './html.js';
 import { IMPORT_ACCEPT } from '../services/fileImport.js';
 import { isSpeechSupported, startDictation, VOICE_LANGS, getVoiceLang, setVoiceLang, voiceModelInfo, warmUpVoiceModel } from '../services/speechInput.js';
 
-const TODAY = new Date().toISOString().slice(0, 10);
 const NA = 'N/A';
 const EXPENSE_PAGE_SIZE = 15;
 
@@ -46,7 +46,7 @@ export function renderScanActions(importState) {
     : 'Take or pick a photo of the logbook; the local AI drafts the entries for you to review';
   return `
     ${ready > 0 ? `<button class="btn-action accent" id="btn-review-scans">Review scanned (${ready})</button>` : ''}
-    <label class="btn-action scan-btn ${unavailableReason ? 'is-warn' : ''}" title="${escapeAttr(title)}">
+    <label class="btn-action scan-btn ${unavailableReason ? 'is-warn' : ''}" title="${escapeHtml(title)}">
       📷 Scan logbook${unavailableReason ? ' <span class="scan-status">· AI off</span>' : ''}${waiting > 0 ? ` <span class="text-mut">(${waiting} waiting)</span>` : ''}
       <input type="file" id="input-scan-logbook" accept="image/*" capture="environment" hidden />
     </label>
@@ -58,13 +58,11 @@ export function renderScanActions(importState) {
   `;
 }
 
-const escapeAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-
 function renderBatchSelectorOptions(openBatches, selectedId) {
   return openBatches
     .map(
       (b) =>
-        `<option value="${b.batch_id}" ${b.batch_id === selectedId ? 'selected' : ''}>${b.batch_name}</option>`
+        `<option value="${b.batch_id}" ${b.batch_id === selectedId ? 'selected' : ''}>${escapeHtml(b.batch_name)}</option>`
     )
     .join('');
 }
@@ -144,7 +142,7 @@ function renderDataTable(activeTab, batchData) {
             ? rows.map((s) => `
               <tr>
                 <td>${formatDate(s.sale_date)}</td>
-                <td><b>${s.buyer_name}</b></td>
+                <td><b>${escapeHtml(s.buyer_name)}</b></td>
                 <td>${Number(s.quantity_sold).toLocaleString()}</td>
                 <td>${Number(s.weight_kg).toLocaleString()} kg</td>
                 <td>${formatPeso(s.price_per_kg)}</td>
@@ -210,7 +208,7 @@ export function renderVoiceBar(voice, { supported, online = true, modelReady = t
     <div class="voice-bar">
       ${supported ? `
         <div class="voice-row">
-          <button type="button" class="btn-action voice-mic" id="btn-voice" title="${escapeAttr(micTitle)}" ${usable && !v.busy ? '' : 'disabled'}>🎤 Speak</button>
+          <button type="button" class="btn-action voice-mic" id="btn-voice" title="${escapeHtml(micTitle)}" ${usable && !v.busy ? '' : 'disabled'}>🎤 Speak</button>
           <select id="voice-lang" aria-label="Voice language">
             ${VOICE_LANGS.map((l) => `<option value="${l.code}" ${l.code === lang ? 'selected' : ''}>${l.label}</option>`).join('')}
           </select>
@@ -218,36 +216,42 @@ export function renderVoiceBar(voice, { supported, online = true, modelReady = t
       <div class="voice-row">
         <input id="voice-transcript" type="text" autocomplete="off"
           placeholder="${supported ? 'Or type one entry' : 'Type one entry, e.g. 3 patay sa batch 9'}"
-          value="${escapeAttr(v.transcript || '')}" ${v.busy ? 'disabled' : ''} />
+          value="${escapeHtml(v.transcript || '')}" ${v.busy ? 'disabled' : ''} />
         <button type="button" class="btn-action" id="btn-voice-read" ${v.busy ? 'disabled' : ''}>Fill form</button>
       </div>
-      <div class="voice-msg ${v.tone ? `is-${v.tone}` : ''}" id="voice-msg" role="status">${v.message ? escapeAttr(v.message) : ''}</div>
+      <div class="voice-msg ${v.tone ? `is-${v.tone}` : ''}" id="voice-msg" role="status">${v.message ? escapeHtml(v.message) : ''}</div>
       ${supported ? `<div class="voice-privacy text-mut">${usable
         ? `Your voice is turned into text on this device; the recording is never sent anywhere.${modelReady ? '' : ` The first time, the voice model (about ${voiceModelInfo().sizeMb} MB) is downloaded.`} Nothing is saved until you tap Save.`
         : 'Offline: voice typing works after the voice model has been downloaded once. You can still type the sentence.'}</div>` : ''}
     </div>`;
 }
 
-function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview, prefill = null) {
+/**
+ * expensePreview: { rows, values } | null — rows is the allocation preview (null when no batch is
+ * active that day), values are the date and amounts it was made for, so the form keeps showing them.
+ */
+function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview, prefill = null, today = localToday()) {
   // A voice prefill fills the form like an edit, but saves as a new entry
   const src = editingItem || prefill?.values || null;
-  const val = (field, fallback = '') => (src ? (src[field] ?? fallback) : fallback);
+  const val = (field, fallback = '') => escapeHtml(src ? (src[field] ?? fallback) : fallback);
   const flagged = new Set(editingItem ? [] : prefill?.uncertain || []);
   const chk = (...fields) => (fields.some((f) => flagged.has(f)) ? 'class="is-uncertain" title="Check this value"' : '');
 
   if (activeTab === 'Expenses') {
-    const feedVal = src?.feed_centavos != null ? (src.feed_centavos / 100).toFixed(2) : '';
-    const otherVal = src?.other_centavos != null ? (src.other_centavos / 100).toFixed(2) : '';
+    const shown = expensePreview?.values || src;
+    const feedVal = shown?.feed_centavos != null ? (shown.feed_centavos / 100).toFixed(2) : '';
+    const otherVal = shown?.other_centavos != null ? (shown.other_centavos / 100).toFixed(2) : '';
+    const previewRows = expensePreview?.rows || [];
 
     let previewHtml = '';
-    if (expensePreview && expensePreview.length) {
+    if (previewRows.length) {
       previewHtml = `
         <div class="ok-line text-mut" style="margin-top: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;">
           Allocation Preview
         </div>
-        ${expensePreview.map((p) => `
+        ${previewRows.map((p) => `
           <div class="ok-line" style="font-size: 13px;">
-            <span>${p.batchName}</span>
+            <span>${escapeHtml(p.batchName)}</span>
             <span>${formatPeso(p.feedShare)} feed · ${formatPeso(p.otherShare)} other</span>
           </div>`).join('')}
       `;
@@ -257,7 +261,7 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
       ${editingItem ? `<div class="ok-line flex-row" style="margin-bottom:6px;"><span class="text-mut">Editing entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
       <label class="form-field">
         Date
-        <input id="input-exp-date" type="date" ${chk('date')} value="${val('entry_date', TODAY)}" />
+        <input id="input-exp-date" type="date" ${chk('date')} value="${escapeHtml(shown?.entry_date ?? today)}" />
       </label>
       <label class="form-field">
         Feed Amount (₱)
@@ -270,9 +274,9 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
       ${previewHtml}
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button class="btn-action" id="btn-preview-expense" style="flex:1;">
-          ${expensePreview ? 'Refresh Preview' : 'Preview Allocation'}
+          ${previewRows.length ? 'Refresh Preview' : 'Preview Allocation'}
         </button>
-        <button class="btn-action accent" id="btn-save-expense" style="flex:1;" ${!expensePreview ? 'disabled' : ''}>
+        <button class="btn-action accent" id="btn-save-expense" style="flex:1;" ${previewRows.length ? '' : 'disabled'}>
           ${editingItem ? 'Save Changes' : 'Save Expense'}
         </button>
       </div>`;
@@ -293,7 +297,7 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
       ${batchSelector}
       <label class="form-field">
         Date
-        <input id="input-feed-date" type="date" ${chk('date')} value="${val('entry_date', TODAY)}" />
+        <input id="input-feed-date" type="date" ${chk('date')} value="${val('entry_date', today)}" />
       </label>
       <label class="form-field">
         Quantity Consumed (kg)
@@ -316,7 +320,7 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
       ${batchSelector}
       <label class="form-field">
         Date
-        <input id="input-mort-date" type="date" ${chk('date')} value="${val('entry_date', TODAY)}" />
+        <input id="input-mort-date" type="date" ${chk('date')} value="${val('entry_date', today)}" />
       </label>
       <label class="form-field">
         Number of Deaths
@@ -337,7 +341,7 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
     ${batchSelector}
     <label class="form-field">
       Sale Date
-      <input id="input-sale-date" type="date" ${chk('date')} value="${val('sale_date', TODAY)}" />
+      <input id="input-sale-date" type="date" ${chk('date')} value="${val('sale_date', today)}" />
     </label>
     <label class="form-field">
       Buyer Name
@@ -382,10 +386,11 @@ export function renderBatchToggleIcon(isCollapsed) {
 // BATCH CARD (per open batch)
 // ---------------------------------------------------------------------------
 
-function renderOpenBatchCard(batchFullData, selectedBatchId, activeTab, editingItem, expensePreview, expenses, isCollapsed = false) {
+function renderOpenBatchCard(batchFullData, selectedBatchId, activeTab, editingItem, expensePreview, expenses, isCollapsed = false, today = localToday()) {
   const { batch, feed, mortality, sales, allocations } = batchFullData;
   const metrics = calcBatchMetrics(batch, allocations, sales, mortality, feed);
-  const liveHeads = liveHeadCount(batch, mortality, sales, TODAY);
+  const liveHeads = liveHeadCount(batch, mortality, sales, today);
+  const name = escapeHtml(batch.batch_name);
 
   const isSelected = batch.batch_id === selectedBatchId;
 
@@ -400,12 +405,12 @@ function renderOpenBatchCard(batchFullData, selectedBatchId, activeTab, editingI
               data-action="toggle-batch-collapse"
               data-batch-id="${batch.batch_id}"
               title="${isCollapsed ? 'Maximize' : 'Minimize'}"
-              aria-label="${isCollapsed ? 'Maximize ' + batch.batch_name : 'Minimize ' + batch.batch_name}"
+              aria-label="${isCollapsed ? 'Maximize' : 'Minimize'} ${name}"
               aria-expanded="${!isCollapsed}"
             >
               ${renderBatchToggleIcon(isCollapsed)}
             </button>
-            <b style="font-size: 16px;">${batch.batch_name}</b>
+            <b style="font-size: 16px;">${name}</b>
           </div>
           <div class="text-mut" style="font-size: 12px; margin-top: 2px;">
             Started ${formatDate(batch.start_date, true)} · ${batch.initial_chick_count.toLocaleString()} chicks initial · <b class="live-count-chip">${liveHeads.toLocaleString()}</b> live today
@@ -466,7 +471,7 @@ export function renderBatches(
   voice = null, // { transcript, message, tone, busy, prefill } for voice typing in the entry form
   voiceModelReady = true // voice model already downloaded (needed for voice typing offline)
 ) {
-  const TODAY = new Date().toISOString().slice(0, 10);
+  const today = localToday(); // at render time: the app can stay open past midnight
 
   const openBatches = openBatchesData.map((d) => d.batch);
 
@@ -487,7 +492,8 @@ export function renderBatches(
           editingItem,
           expensePreview,
           expenses,
-          collapsedBatchIds.has(bd.batch.batch_id)
+          collapsedBatchIds.has(bd.batch.batch_id),
+          today
         )
       ).join('')
     : `<div class="card-box text-mut" style="padding:24px;text-align:center;">
@@ -515,7 +521,7 @@ export function renderBatches(
           ${tabButtons}
         </div>
         ${editingItem ? '' : renderVoiceBar(voice, { supported: isSpeechSupported(), online: globalThis.navigator?.onLine !== false, modelReady: voiceModelReady })}
-        ${renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview, voice?.prefill?.tab === activeTab ? voice.prefill : null)}
+        ${renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview, voice?.prefill?.tab === activeTab ? voice.prefill : null, today)}
       </div>
     </div>
 
@@ -529,11 +535,11 @@ export function renderBatches(
       <h2>Create New Batch</h2>
       <label class="form-field">
         Batch Name / ID
-        <input id="new-batch-name" type="text" value="Batch ${new Date().toISOString().slice(0, 7)}" />
+        <input id="new-batch-name" type="text" value="Batch ${today.slice(0, 7)}" />
       </label>
       <label class="form-field">
         Start Date
-        <input id="new-batch-start" type="date" value="${TODAY}" />
+        <input id="new-batch-start" type="date" value="${today}" />
       </label>
       <label class="form-field">
         Initial Chick Count (Fixed)
@@ -597,6 +603,11 @@ export function renderBatches(
 // ---------------------------------------------------------------------------
 // LISTENERS
 // ---------------------------------------------------------------------------
+
+/** Is the entry form open? Someone may be typing in it, and a redraw would clear it. */
+export function isEntryModalOpen(container) {
+  return container.querySelector('#entry-modal-backdrop')?.style.display === 'flex';
+}
 
 let _dictation = null; // the recording in progress, if any
 
@@ -909,6 +920,14 @@ export function attachBatchesListeners(container, state, callbacks) {
       _batchModalOpen = false; // editingItem being set will trigger auto-show
       onTabChange('Expenses');
       onSetEdit('expenses', btn.getAttribute('data-id'));
+    });
+  });
+
+  // Save uses what is in the form, so a preview of other values no longer counts
+  ['#input-exp-date', '#input-exp-feed', '#input-exp-other'].forEach((sel) => {
+    container.querySelector(sel)?.addEventListener('input', () => {
+      const saveExpenseBtn = container.querySelector('#btn-save-expense');
+      if (saveExpenseBtn) saveExpenseBtn.disabled = true;
     });
   });
 

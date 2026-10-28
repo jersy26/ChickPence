@@ -10,6 +10,7 @@ import {
 import { calcBatchMetrics } from '../services/allocationEngine.js';
 import { renderExportButton, attachExportButton } from './exportMenu.js';
 import { renderInsightsCard } from './insightsCard.js';
+import { escapeHtml } from './html.js';
 
 const NA = 'N/A';
 
@@ -56,7 +57,7 @@ export function renderSummary(batchData, insights = null) {
     ? sales.map((s) => `
         <tr>
           <td>${formatDate(s.sale_date)}</td>
-          <td><b>${s.buyer_name}</b></td>
+          <td><b>${escapeHtml(s.buyer_name)}</b></td>
           <td>${Number(s.quantity_sold).toLocaleString()}</td>
           <td>${Number(s.weight_kg).toLocaleString()} kg</td>
           <td><b>${formatPeso(s.total_amount)}</b></td>
@@ -78,7 +79,7 @@ export function renderSummary(batchData, insights = null) {
       <div class="flex-row" style="gap: 12px;">
         <button class="btn-icon" id="btn-summary-back" title="Back to History" style="font-size: 20px;">←</button>
         <div>
-          <h1 style="display:inline-block;">${batch.batch_name}</h1>
+          <h1 style="display:inline-block;">${escapeHtml(batch.batch_name)}</h1>
           ${statusLabel}
         </div>
       </div>
@@ -167,7 +168,7 @@ export function renderSummary(batchData, insights = null) {
         </div>
         <div class="text-mut" style="margin-top:8px;border-top:1px dashed var(--ln);padding-top:8px;">
           Mortality: <b>${metrics.totalDeaths.toLocaleString()}</b> of ${batch.initial_chick_count.toLocaleString()} chicks (${formatPercent(metrics.mortalityRate)})
-          ${batch.mortality_threshold_pct != null ? ` · Threshold: ${batch.mortality_threshold_pct}%` : ''}
+          ${batch.mortality_threshold_pct != null ? ` · Threshold: ${escapeHtml(batch.mortality_threshold_pct)}%` : ''}
         </div>
       </div>
     </div>

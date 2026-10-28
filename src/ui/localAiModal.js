@@ -1,6 +1,6 @@
 import { openModal, closeModal } from './modals.js';
 import { showToast } from './toast.js';
-import { escapeHtml } from './importReviewModal.js';
+import { escapeHtml } from './html.js';
 import { getLlmSettings, setLlmSettings, listModels } from '../services/localLlm.js';
 import { VOICE_MODELS, getVoiceModel, setVoiceModel } from '../services/speechInput.js';
 import { SUGGESTION_MODES, getSuggestionsMode, setSuggestionsMode } from '../services/insightsService.js';

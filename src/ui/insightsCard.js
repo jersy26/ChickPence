@@ -4,7 +4,7 @@
  * insightsService.loadInsights returned; the AI's text is HTML-escaped.
  */
 
-import { escapeHtml } from './importReviewModal.js';
+import { escapeHtml } from './html.js';
 
 function formatWhen(iso) {
   if (!iso) return '';

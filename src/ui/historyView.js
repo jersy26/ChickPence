@@ -7,6 +7,10 @@ import {
   formatDate
 } from '../services/calculations.js';
 import { renderExportButton, attachExportButton } from './exportMenu.js';
+import { escapeHtml } from './html.js';
+
+// Each keystroke in the search box redraws the page; the new box takes over focus and caret
+let searchCaret = null;
 
 /** Batches matching the History search box and status chip. */
 export function filterHistoryBatches(batchesWithFullData, searchQuery = '', statusFilter = 'All') {
@@ -58,7 +62,7 @@ export function renderHistory(batchesWithFullData, searchQuery = '', statusFilte
 
         return `
           <tr class="clickable-row" data-history-row data-batch-id="${batch.batch_id}" data-status="${batch.status}">
-            <td><b>${batch.batch_name}</b></td>
+            <td><b>${escapeHtml(batch.batch_name)}</b></td>
             <td>${formatDate(batch.start_date, true)}</td>
             <td>${batch.end_date ? formatDate(batch.end_date, true) : '—'}</td>
             <td>${batch.initial_chick_count.toLocaleString()}</td>
@@ -81,7 +85,7 @@ export function renderHistory(batchesWithFullData, searchQuery = '', statusFilte
         id="history-search-input"
         type="text"
         placeholder="🔍 Search batch name…"
-        value="${searchQuery}"
+        value="${escapeHtml(searchQuery)}"
         style="max-width: 280px;"
       />
       <div class="chips-container">
@@ -115,7 +119,13 @@ export function attachHistoryListeners(container, onNavigate, onFilterChange, on
   if (onExport) attachExportButton(container, 'history', onExport);
 
   const searchInput = container.querySelector('#history-search-input');
+  if (searchInput && searchCaret !== null) {
+    searchInput.focus();
+    searchInput.setSelectionRange(searchCaret, searchCaret);
+  }
+  searchCaret = null;
   searchInput?.addEventListener('input', (e) => {
+    searchCaret = e.target.selectionStart;
     onFilterChange(e.target.value, null);
   });
 

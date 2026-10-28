@@ -6,6 +6,10 @@ import { computeAllocationsForExpense } from './allocationEngine.js';
  * Must be called inside a Dexie transaction that includes expenses, allocations,
  * batches, mortality_logs, and sales.
  *
+ * Allocations are derived data (never synced), so they are rebuilt rather than
+ * patched: rows of an expense that was deleted (here or on another device) or
+ * discarded go too, instead of staying in its batches' costs.
+ *
  * Pass tx = the Dexie transaction object.
  */
 export async function recomputeAllocations(tx, expenseIds = null) {
@@ -18,22 +22,16 @@ export async function recomputeAllocations(tx, expenseIds = null) {
 
   let expensesToProcess;
   if (expenseIds && expenseIds.length) {
-    expensesToProcess = await Promise.all(expenseIds.map((id) => tx.table('expenses').get(id)));
-    expensesToProcess = expensesToProcess.filter(Boolean).filter((e) => !e.deleted_at);
+    await tx.table('allocations').where('expense_id').anyOf(expenseIds).delete();
+    expensesToProcess = (await tx.table('expenses').bulkGet(expenseIds)).filter((e) => e && !e.deleted_at);
   } else {
+    await tx.table('allocations').clear();
     expensesToProcess = await tx.table('expenses').filter((e) => !e.deleted_at).toArray();
   }
 
   for (const expense of expensesToProcess) {
-    // Delete existing allocation rows for this expense
-    await tx.table('allocations').where('expense_id').equals(expense.expense_id).delete();
-
     const result = computeAllocationsForExpense(expense, allBatches, allMort, allSales);
-    if (result) {
-      for (const row of result.rows) {
-        await tx.table('allocations').put(row);
-      }
-    }
+    if (result) await tx.table('allocations').bulkPut(result.rows);
   }
 }
 
@@ -46,20 +44,6 @@ export async function recomputeAllAllocations() {
     [db.expenses, db.allocations, db.batches, db.mortality_logs, db.sales],
     async (tx) => {
       await recomputeAllocations(tx);
-    }
-  );
-}
-
-/**
- * Recompute allocations for expenses on a specific set of dates or a single expense.
- */
-export async function recomputeAllocationsForExpenseIds(expenseIds) {
-  if (!expenseIds.length) return;
-  await db.transaction(
-    'rw',
-    [db.expenses, db.allocations, db.batches, db.mortality_logs, db.sales],
-    async (tx) => {
-      await recomputeAllocations(tx, expenseIds);
     }
   );
 }

@@ -6,7 +6,7 @@
  */
 
 import { openModal, closeModal } from './modals.js';
-import { escapeHtml } from './importReviewModal.js';
+import { escapeHtml } from './html.js';
 import { outboxProblems } from '../services/syncEngine.js';
 
 const LABELS = { batches: 'Batch', expenses: 'Farm expense', feed_logs: 'Feed log', mortality_logs: 'Mortality log', sales: 'Sale' };
@@ -36,7 +36,7 @@ export function renderSyncProblems(items, { online = true, batchNames = new Map(
   const rows = problems.map((item) => `
     <div class="sync-problem" data-id="${item.id}">
       <div class="flex-row">
-        <b>${LABELS[item.table_name] || item.table_name}</b>
+        <b>${escapeHtml(LABELS[item.table_name] || item.table_name)}</b>
         <span class="text-mut">Tried ${item.attempts || 1} ${(item.attempts || 1) === 1 ? 'time' : 'times'}</span>
       </div>
       <div>${escapeHtml(describeChange(item, batchNames))}</div>

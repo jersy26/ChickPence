@@ -2,8 +2,33 @@ import { db } from '../db/dexie.js';
 import { syncEngine } from './syncEngine.js';
 import { DEMO_USER_ID } from '../db/seed.js';
 import { AuthService } from './auth.js';
-import { recomputeAllocations, recomputeAllocationsForExpenseIds, recomputeAllAllocations } from './allocationService.js';
+import { recomputeAllocations } from './allocationService.js';
 import { computeAllocationsForExpense } from './allocationEngine.js';
+import { localToday } from './calculations.js';
+
+/** A record's table, the outbox, and every table cost sharing reads or writes. */
+const changeTables = (tableName) =>
+  [...new Set([db[tableName], db.outbox, db.expenses, db.allocations, db.batches, db.mortality_logs, db.sales])];
+
+/**
+ * Save a record, queue its upload and (optionally) recompute cost sharing in
+ * one transaction: either all of it is stored or none of it. Before, these
+ * were separate writes, and a tab closed in between left a change on this
+ * device that was never uploaded (or costs shared from old numbers).
+ * recompute: true for every expense, or a list of expense_ids.
+ */
+async function saveAndQueue(tableName, record, { recompute = null } = {}) {
+  const saved = await db.transaction('rw', changeTables(tableName), async (tx) => {
+    const saved = await syncEngine.writeUpsert(tableName, record);
+    if (recompute) await recomputeAllocations(tx, recompute === true ? null : recompute);
+    return saved;
+  });
+  syncEngine.changed();
+  return saved;
+}
+
+/** Non-deleted rows of one batch, through the batch_id index (not a scan of the whole table). */
+const rowsOfBatch = (table, batchId) => table.where('batch_id').equals(batchId).filter((r) => !r.deleted_at).toArray();
 
 export const Repository = {
   // ---------------------------------------------------------------------------
@@ -29,23 +54,17 @@ export const Repository = {
   },
 
   async getBatchFeed(batchId) {
-    const logs = await db.feed_logs
-      .filter((f) => f.batch_id === batchId && !f.deleted_at)
-      .toArray();
+    const logs = await rowsOfBatch(db.feed_logs, batchId);
     return logs.sort((a, b) => (a.entry_date < b.entry_date ? 1 : -1));
   },
 
   async getBatchMortality(batchId) {
-    const logs = await db.mortality_logs
-      .filter((m) => m.batch_id === batchId && !m.deleted_at)
-      .toArray();
+    const logs = await rowsOfBatch(db.mortality_logs, batchId);
     return logs.sort((a, b) => (a.entry_date < b.entry_date ? -1 : 1));
   },
 
   async getBatchSales(batchId) {
-    const sales = await db.sales
-      .filter((s) => s.batch_id === batchId && !s.deleted_at)
-      .toArray();
+    const sales = await rowsOfBatch(db.sales, batchId);
     return sales.sort((a, b) => (a.sale_date < b.sale_date ? 1 : -1));
   },
 
@@ -74,16 +93,15 @@ export const Repository = {
       .filter((b) => b.status === 'Closed' && !b.deleted_at)
       .toArray();
 
-    const results = [];
-    for (const b of closed) {
+    const results = await Promise.all(closed.map(async (b) => {
       const [sales, allocations, mortality, feed] = await Promise.all([
         this.getBatchSales(b.batch_id),
         this.getBatchAllocations(b.batch_id),
         this.getBatchMortality(b.batch_id),
         this.getBatchFeed(b.batch_id)
       ]);
-      results.push({ batch: b, sales, allocations, mortality, feed });
-    }
+      return { batch: b, sales, allocations, mortality, feed };
+    }));
     return results.sort((a, b) => (a.batch.start_date < b.batch.start_date ? -1 : 1));
   },
 
@@ -132,7 +150,8 @@ export const Repository = {
       deleted_at: null
     };
 
-    return await syncEngine.queueUpsert('batches', batch);
+    // A batch started on or before an expense's date takes its share of that expense
+    return await saveAndQueue('batches', batch, { recompute: true });
   },
 
   async updateBatchThresholds(batchId, { mortality_threshold_pct }) {
@@ -150,7 +169,7 @@ export const Repository = {
     return await syncEngine.queueUpsert('batches', updated);
   },
 
-  async closeBatch(batchId, endDate = new Date().toISOString().slice(0, 10)) {
+  async closeBatch(batchId, endDate = localToday()) {
     const batch = await db.batches.get(batchId);
     if (!batch) throw new Error('Batch not found');
 
@@ -203,18 +222,7 @@ export const Repository = {
       throw new Error(`No batch is active on ${expense.entry_date}. Expense cannot be allocated.`);
     }
 
-    // Save and recompute in one transaction
-    await db.transaction(
-      'rw',
-      [db.expenses, db.allocations, db.batches, db.mortality_logs, db.sales],
-      async (tx) => {
-        await tx.table('expenses').put(record);
-        await recomputeAllocations(tx, [record.expense_id]);
-      }
-    );
-
-    await syncEngine.queueUpsert('expenses', record);
-    return record;
+    return await saveAndQueue('expenses', record, { recompute: [record.expense_id] });
   },
 
   async voidExpense(expenseId) {
@@ -223,21 +231,11 @@ export const Repository = {
 
     const voided = {
       ...expense,
-      deleted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      deleted_at: new Date().toISOString()
     };
 
-    await db.transaction(
-      'rw',
-      [db.expenses, db.allocations, db.batches, db.mortality_logs, db.sales],
-      async (tx) => {
-        await tx.table('expenses').put(voided);
-        // Remove allocations for this expense
-        await tx.table('allocations').where('expense_id').equals(expenseId).delete();
-      }
-    );
-
-    await syncEngine.queueUpsert('expenses', voided);
+    // Recomputing a deleted expense removes its allocation rows
+    await saveAndQueue('expenses', voided, { recompute: [expenseId] });
   },
 
   // ---------------------------------------------------------------------------
@@ -273,19 +271,8 @@ export const Repository = {
       deleted_at: null
     };
 
-    // Save mortality and recompute allocations (backdated deaths affect allocation basis)
-    await db.transaction(
-      'rw',
-      [db.mortality_logs, db.expenses, db.allocations, db.batches, db.sales],
-      async (tx) => {
-        await tx.table('mortality_logs').put(record);
-        // Recompute ALL allocations since any date after this mortality may be affected
-        await recomputeAllocations(tx);
-      }
-    );
-
-    await syncEngine.queueUpsert('mortality_logs', record);
-    return record;
+    // Recompute ALL allocations: backdated deaths change the head counts expenses are shared by
+    return await saveAndQueue('mortality_logs', record, { recompute: true });
   },
 
   // ---------------------------------------------------------------------------
@@ -311,18 +298,8 @@ export const Repository = {
       deleted_at: null
     };
 
-    // Save sale and recompute allocations (backdated sales affect head count)
-    await db.transaction(
-      'rw',
-      [db.sales, db.expenses, db.allocations, db.batches, db.mortality_logs],
-      async (tx) => {
-        await tx.table('sales').put(record);
-        await recomputeAllocations(tx);
-      }
-    );
-
-    await syncEngine.queueUpsert('sales', record);
-    return record;
+    // Backdated sales change the head counts expenses are shared by
+    return await saveAndQueue('sales', record, { recompute: true });
   },
 
   // ---------------------------------------------------------------------------
@@ -330,11 +307,12 @@ export const Repository = {
   // ---------------------------------------------------------------------------
 
   async deleteRecord(table, recordId) {
-    await syncEngine.queueSoftDelete(table, recordId);
-
-    // After any deletion that could affect allocation sources, recompute
-    if (['mortality_logs', 'sales', 'expenses'].includes(table)) {
-      await recomputeAllAllocations();
-    }
+    // Deaths, sales and expenses are what costs are shared by
+    const recompute = ['mortality_logs', 'sales', 'expenses'].includes(table);
+    await db.transaction('rw', changeTables(table), async (tx) => {
+      await syncEngine.writeSoftDelete(table, recordId);
+      if (recompute) await recomputeAllocations(tx);
+    });
+    syncEngine.changed();
   }
 };

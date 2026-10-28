@@ -24,34 +24,40 @@ const RECORD_TABLES = ['batches', 'feed_logs', 'mortality_logs', 'sales', 'expen
  *                                       which may hold demo and real records mixed)
  * @param {string} p.target            – DEMO_OWNER or the Supabase user id
  * @param {number} p.unsynced          – items still in the outbox
- * @returns {'keep'|'seed'|'clear'|'clear-and-seed'|'keep-unsynced'}
+ * @returns {'keep'|'seed'|'clear'|'clear-and-seed'|'keep-unsynced'|'blocked'}
+ *          'blocked': Demo Mode cannot start yet (an account's changes wait to upload)
  */
 export function planLocalData({ owner, target, unsynced }) {
   const isDemo = target === DEMO_OWNER;
 
   if (owner === target) return isDemo ? 'seed' : 'keep'; // 'seed' only re-seeds when the seed version changed
-  // Demo Mode's simulated sync empties the outbox, so leftovers belong to a real account
-  if (unsynced > 0) return 'keep-unsynced';
+  // Demo changes are never uploaded, so what Demo Mode left can always go
+  if (unsynced > 0 && owner !== DEMO_OWNER) {
+    // An account's changes wait to upload. Demo Mode's simulated sync would throw
+    // them away, so it waits until they are uploaded; an account keeps them
+    return isDemo ? 'blocked' : 'keep-unsynced';
+  }
   // Unknown or different owner: start clean (a real account downloads its records again)
   return isDemo ? 'clear-and-seed' : 'clear';
 }
 
 /**
  * Make the local records match the user who just logged in.
- * Returns the action taken (see planLocalData).
+ * Returns { action (see planLocalData), unsynced, ownerEmail (of the records kept, if known) }.
  */
 export async function prepareLocalDataFor(user) {
-  if (!user) return 'keep';
+  if (!user) return { action: 'keep', unsynced: 0, ownerEmail: null };
   const target = user.isDemo ? DEMO_OWNER : user.id;
   const [ownerRow, unsynced] = await Promise.all([
     db.app_state.get('data_owner'),
     db.outbox.count()
   ]);
   const action = planLocalData({ owner: ownerRow?.value ?? null, target, unsynced });
+  const ownerEmail = ownerRow?.email ?? null;
 
-  if (action === 'keep-unsynced') {
-    console.warn(`Kept local records of ${ownerRow?.value ?? 'a previous account'}: ${unsynced} not uploaded yet.`);
-    return action;
+  if (action === 'keep-unsynced' || action === 'blocked') {
+    console.warn(`Kept local records of ${ownerEmail ?? ownerRow?.value ?? 'a previous account'}: ${unsynced} not uploaded yet.`);
+    return { action, unsynced, ownerEmail };
   }
 
   if (action === 'clear' || action === 'clear-and-seed') {
@@ -63,6 +69,6 @@ export async function prepareLocalDataFor(user) {
   if (action === 'seed' || action === 'clear-and-seed') {
     await checkAndSeedInitialData(action === 'clear-and-seed');
   }
-  await db.app_state.put({ key: 'data_owner', value: target });
-  return action;
+  await db.app_state.put({ key: 'data_owner', value: target, email: user.isDemo ? null : user.email ?? null });
+  return { action, unsynced, ownerEmail };
 }
