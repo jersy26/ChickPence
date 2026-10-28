@@ -10,6 +10,7 @@
 
 import { db } from '../db/dexie.js';
 import { checkLocalLlm, transcribeImage, extractEntries } from './localLlm.js';
+import { normalizeSpoken, parseRecord } from './logbookParser.js';
 
 export const DRAFT_TYPES = ['expense', 'feed', 'mortality', 'sale'];
 export const LOW_CONFIDENCE = 0.7;
@@ -191,6 +192,70 @@ export async function parseImage(imageBase64, batchNames, { signal, onProgress }
 export async function parseText(text, batchNames, { signal, onProgress } = {}) {
   const result = await extractEntries(text, { today: localToday(), batches: batchNames, signal, onProgress });
   return { entries: result.entries, notes: result.notes };
+}
+
+// ---------------------------------------------------------------------------
+// VOICE INPUT (one spoken entry → the entry form)
+// ---------------------------------------------------------------------------
+
+/**
+ * One spoken sentence → { entry, notes, source }. The rules read it instantly;
+ * only when they cannot does it go to the local text model (slow on CPU).
+ * A sentence with no date means today. entry is null when nothing was understood.
+ */
+export async function parseSpokenEntry(transcript, batchNames, { signal, onProgress, today = localToday() } = {}) {
+  const text = normalizeSpoken(transcript);
+  if (!text) return { entry: null, notes: 'Nothing was heard.', source: 'rules' };
+
+  const ruled = parseRecord(text, { today, batches: batchNames, previousDate: today });
+  if (ruled) return { entry: { ...ruled, source_text: transcript }, notes: '', source: 'rules' };
+
+  const reason = await aiUnavailableReason();
+  if (reason) {
+    return { entry: null, notes: `Could not tell what kind of entry that is. ${reason}`, source: 'rules' };
+  }
+  onProgress?.('Reading what you said with the local AI…');
+  const { entries, notes } = await extractEntries(text, { today, batches: batchNames, signal });
+  const [first] = entries;
+  if (!first) return { entry: null, notes: notes || 'Could not tell what kind of entry that is.', source: 'ai' };
+  return {
+    entry: { ...first, date: first.date || today, source_text: transcript },
+    notes: entries.length > 1 ? 'Only the first entry was used. Say one entry at a time.' : '',
+    source: 'ai'
+  };
+}
+
+const TAB_BY_TYPE = { expense: 'Expenses', feed: 'Feed', mortality: 'Mortality', sale: 'Sales' };
+
+/**
+ * A normalized draft → what the entry form needs: the tab to open, the batch
+ * to select, values shaped like the stored record (so the form shows them like
+ * an edit), and the fields to check.
+ */
+export function draftToFormPrefill(draft) {
+  const base = { tab: TAB_BY_TYPE[draft.type], batch_id: draft.batch_id, uncertain: [...draft.uncertain] };
+  const toCentavos = (peso) => (peso ? Math.round(peso * 100) : null);
+  switch (draft.type) {
+    case 'expense':
+      return { ...base, values: { entry_date: draft.date, feed_centavos: toCentavos(draft.feed_amount), other_centavos: toCentavos(draft.other_amount) } };
+    case 'feed':
+      return { ...base, values: { entry_date: draft.date, quantity_kg: draft.quantity_kg } };
+    case 'mortality':
+      return { ...base, values: { entry_date: draft.date, count: draft.count } };
+    case 'sale':
+      return {
+        ...base,
+        values: {
+          sale_date: draft.date,
+          buyer_name: draft.buyer_name,
+          quantity_sold: draft.quantity_sold,
+          weight_kg: draft.weight_kg,
+          price_per_kg: draft.price_per_kg
+        }
+      };
+    default:
+      throw new Error(`Unknown draft type ${draft.type}`);
+  }
 }
 
 // ---------------------------------------------------------------------------

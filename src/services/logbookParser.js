@@ -19,6 +19,8 @@ const MONTHS = {
   okt: 10, 'ok+': 10, oct: 10, nob: 11, nov: 11, dis: 12, dec: 12
 };
 
+const MONTH_DAY = /(?:^|\s)(ene|jan|peb|feb|mar|abr|apr|mayo|may|hun|jun|hul|jul|ago|aug|set|sep|okt|ok\+|oct|nob|nov|dis|dec)[a-z]*\.?\s*(\d{1,2})\b/i;
+
 const pad = (n) => String(n).padStart(2, '0');
 const toNum = (s) => (s == null ? null : Number(String(s).replace(/,/g, '')));
 
@@ -40,8 +42,7 @@ export function parseDate(text, today) {
   let m = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
 
-  const monthRe = /(?:^|\s)(ene|jan|peb|feb|mar|abr|apr|mayo|may|hun|jun|hul|jul|ago|aug|set|sep|okt|ok\+|oct|nob|nov|dis|dec)[a-z]*\.?\s*(\d{1,2})\b/gi;
-  for (const mm of text.matchAll(monthRe)) {
+  for (const mm of text.matchAll(new RegExp(MONTH_DAY.source, 'gi'))) {
     // Filipino "may 3 patay" means "there are 3 dead", so a bare "may" only counts at the start
     if (mm[1].toLowerCase() === 'may' && mm.index > 0) continue;
     return withYear(MONTHS[mm[1].toLowerCase()], Number(mm[2]), today);
@@ -51,7 +52,7 @@ export function parseDate(text, today) {
   if (m) return withYear(Number(m[1]), Number(m[2]), today);
 
   if (/\bkahapon\b|\byesterday\b/i.test(text)) return shiftDays(today, -1);
-  if (/\bngayon\b|\btoday\b/i.test(text)) return today;
+  if (/\bngayon\b|\btoday\b|\bkanina\b/i.test(text)) return today;
   return null;
 }
 
@@ -70,11 +71,14 @@ export function parseBatch(text, batchNames) {
 }
 
 const PESO = /(?:₱|\bphp\s?|\bp\s?)(\d[\d,]*(?:\.\d+)?)/i;
-const MORTALITY = /\b(patay|namatay|dead|died|mortality)\b/i;
-const SALE = /\b(benta|nabenta|binenta|sold|sale|naibenta)\b/i;
-const FEED_USE = /\b(patuka|pakain|kinain|feed\s*(?:used|consumed)|consumed)\b/i;
+const MORTALITY = /\b(patay|namatay|namatayan|nangamatay|dead|died|deaths?|mortality)\b/i;
+const SALE = /\b(benta|nabenta|binenta|naibenta|nagbenta|ibinenta|sold|sale|sell)\b/i;
+const FEED_USE = /\b(patuka|pakain|nagpakain|pinakain|kinain|kumain|fed|ate|feed\s*(?:used|consumed)|consumed)\b/i;
 const FEED_WORD = /\b(feeds?|patuka|sako|sacks?|bags?)\b/i;
 const SACKS = /(\d+(?:\.\d+)?)\s*(?:sako|sacks?|bags?)\b/i;
+// A cost said without a peso sign ("nagbayad ng kuryente 850")
+const EXPENSE_WORD = /\b(bayad|nagbayad|binayaran|gastos|gumastos|bumili|binili|paid|bought|spent|cost)\b/i;
+const BATCH_REF = /\bbatch\s*\d[\d-]*|\bb-?\d+\b/gi;
 
 function kgAmount(text) {
   // kg that is not part of a price ("118/kg")
@@ -85,24 +89,44 @@ function kgAmount(text) {
 }
 
 function parseSale(text) {
-  const heads = text.match(/(\d[\d,]*)\s*(?:hds?|heads?|ulo|pcs|manok)\b/i);
-  const price = text.match(/(?:[@Ø©]|\bat\b)\s*(?:₱|p)?\s*(\d[\d,]*(?:\.\d+)?)\s*(?:\/\s*kg)?|(\d[\d,]*(?:\.\d+)?)\s*\/\s*kg/i);
-  const buyer = text.match(/\b(?:benta|nabenta|binenta|naibenta|sold)\s+(?:kay\s+|to\s+)?([A-Za-zñÑ.' ]+?)(?=\s+\d|\s*[,;]|$)/i);
+  const heads = text.match(/(\d[\d,]*)\s*(?:hds?|heads?|ulo|pcs|manok|birds?|chickens?|piraso)\b/i);
+  // "118/kg" first: in Taglish "at" also means "and" ("120 heads at 245 kg")
+  const price =
+    text.match(/(\d[\d,]*(?:\.\d+)?)\s*\/\s*kg/i) ||
+    text.match(/(?:[@Ø©]|\bat\b)\s*(?:₱|p)?\s*(\d[\d,]*(?:\.\d+)?)(?![\d,.]|\s*kg)/i);
+  const buyer =
+    text.match(/\b(?:kay|to)\s+([A-Za-zñÑ.' ]+?)(?=\s+(?:ng|ang|na|of|at|and|sa)\b|\s+\d|\s*[,;]|$)/i) ||
+    text.match(/\b(?:benta|nabenta|binenta|naibenta|sold)\s+([A-Za-zñÑ.' ]+?)(?=\s+\d|\s*[,;]|$)/i);
   // Weight: the kg value that is not the price
   const withoutPrice = price ? text.replace(price[0], ' ') : text;
   return {
     buyer_name: buyer ? buyer[1].trim() : null,
     quantity_sold: heads ? toNum(heads[1]) : null,
     weight_kg: kgAmount(withoutPrice),
-    price_per_kg: price ? toNum(price[1] ?? price[2]) : null
+    price_per_kg: price ? toNum(price[1]) : null
   };
 }
 
 function firstInteger(text, keyword) {
   const after = text.match(new RegExp(`${keyword.source}\\s*:?\\s*(\\d+)`, 'i'));
   if (after) return Number(after[2]);
-  const before = text.match(new RegExp(`(\\d+)\\s*${keyword.source}`, 'i'));
-  return before ? Number(before[1]) : null;
+  // Spoken order: "3 ang namatay", "3 chickens died", "patay ang 3". Filler words, never numbers.
+  const filler = '(?:[a-zñ]+\\s+){0,2}';
+  const before = text.match(new RegExp(`(\\d+)\\s*${filler}${keyword.source}`, 'i'));
+  if (before) return Number(before[1]);
+  const later = text.match(new RegExp(`${keyword.source}\\s+${filler}(\\d+)`, 'i'));
+  return later ? Number(later[2]) : null;
+}
+
+/** First number that is not a weight, head count, sack count, date or batch: the pesos of a spoken cost. */
+function bareAmount(text) {
+  const cleaned = text
+    .replace(BATCH_REF, ' ')
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, ' ')
+    .replace(new RegExp(MONTH_DAY.source, 'gi'), ' ')
+    .replace(/(?:^|\s)\d{1,2}[/-]\d{1,2}(?![\d/-])/g, ' ');
+  const m = cleaned.match(/(\d[\d,]*(?:\.\d+)?)(?![\d,.])(?!\s*(?:kg|sako|sacks?|bags?|hds?|heads?|ulo|birds?|chickens?)\b)/i);
+  return m ? toNum(m[1]) : null;
 }
 
 const blank = () => ({
@@ -130,12 +154,13 @@ export function parseRecord(text, { today, batches, previousDate = null }) {
     Object.assign(entry, { type: 'sale', ...parseSale(text) });
   } else if (MORTALITY.test(text)) {
     entry.type = 'mortality';
-    entry.count = firstInteger(text, MORTALITY);
-  } else if (peso) {
+    entry.count = firstInteger(text.replace(BATCH_REF, ' '), MORTALITY);
+  } else if (peso || (EXPENSE_WORD.test(text) && bareAmount(text) != null)) {
+    const amount = peso ? toNum(peso[1]) : bareAmount(text);
     entry.type = 'expense';
     entry.batch_hint = null; // expenses are farm-level and get allocated
-    if (FEED_WORD.test(text)) entry.feed_amount = toNum(peso[1]);
-    else entry.other_amount = toNum(peso[1]);
+    if (FEED_WORD.test(text)) entry.feed_amount = amount;
+    else entry.other_amount = amount;
   } else if (FEED_USE.test(text) || (FEED_WORD.test(text) && (kgAmount(text) || SACKS.test(text)))) {
     entry.type = 'feed';
     entry.quantity_kg = kgAmount(text);
@@ -161,6 +186,74 @@ export function parseRecord(text, { today, batches, previousDate = null }) {
     confidence: uncertain.length ? 0.5 : 0.9,
     uncertain_fields: uncertain
   };
+}
+
+// ---------------------------------------------------------------------------
+// SPOKEN TEXT (voice input)
+// ---------------------------------------------------------------------------
+
+const NUMBER_WORDS = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+  ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
+  seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+  isa: 1, dalawa: 2, tatlo: 3, apat: 4, lima: 5, anim: 6, pito: 7, walo: 8, siyam: 9, sampu: 10,
+  dalawampu: 20, tatlumpu: 30, apatnapu: 40, limampu: 50, animnapu: 60, pitumpu: 70, walumpu: 80, siyamnapu: 90
+};
+const SCALE_WORDS = { hundred: 100, daan: 100, raan: 100, sandaan: 100, thousand: 1000, libo: 1000, sanlibo: 1000 };
+const FIL_TEENS = { isa: 11, dalawa: 12, tatlo: 13, apat: 14, lima: 15, anim: 16, pito: 17, walo: 18, siyam: 19 };
+
+// Filipino words take the linker -ng ("tatlong", "isang", "daang")
+const NUM_WORD = `(?:${[...Object.keys(NUMBER_WORDS), ...Object.keys(SCALE_WORDS)].sort((a, b) => b.length - a.length).join('|')})(?:ng|g)?`;
+const NUM_RUN = new RegExp(`\\b${NUM_WORD}(?:[\\s-]+(?:(?:and|at|na)[\\s-]+)?${NUM_WORD})*\\b`, 'gi');
+
+function wordValue(word) {
+  const w = word.toLowerCase();
+  for (const cut of [w, w.replace(/ng$/, ''), w.replace(/g$/, '')]) {
+    if (cut in NUMBER_WORDS) return { n: NUMBER_WORDS[cut] };
+    if (cut in SCALE_WORDS) return { scale: SCALE_WORDS[cut], one: cut.startsWith('san') };
+  }
+  return null;
+}
+
+/** "dalawang daan at limampu" → 250, "one hundred twenty" → 120. */
+function runValue(run) {
+  let total = 0;
+  let current = 0;
+  for (const word of run.split(/[\s-]+/)) {
+    const v = wordValue(word);
+    if (!v) continue; // "and", "at", "na"
+    if (v.n !== undefined) current += v.n;
+    else if (v.scale === 100) current = (v.one ? 1 : current || 1) * 100;
+    else { total += (v.one ? 1 : current || 1) * v.scale; current = 0; }
+  }
+  return total + current;
+}
+
+/**
+ * Rewrite a spoken sentence into the logbook wording the rules read:
+ * number words → digits, kilo → kg, "118 pesos per kilo" → "118/kg",
+ * "850 pesos" → "₱850", "ika-26 ng Oktubre" → "Oktubre 26".
+ */
+export function normalizeSpoken(text) {
+  return String(text || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/'t\b/g, ' at') // "dalawampu't lima"
+    .replace(/\blabi(?:ng|n|m)[\s-]?(isa|dalawa|tatlo|apat|lima|anim|pito|walo|siyam)\b/gi, (_, u) => String(FIL_TEENS[u.toLowerCase()]))
+    .replace(NUM_RUN, (run) => String(runValue(run)))
+    .replace(/(\d+(?:\.\d+)?)\s*(?:k|thousand|libo)\b/gi, (_, n) => String(Math.round(Number(n) * 1000)))
+    .replace(/(\d),(?=\d{3}\b)/g, '$1') // "12,500" → "12500" so later steps see one number
+    .replace(/\b(?:kilos?|kilograms?|kilogramo|kgs)\b/gi, 'kg')
+    .replace(/(\d+(?:\.\d+)?)\s*(?:pesos?|piso)?\s+(?:per|kada|bawat|a|an|isang|1)\s*kg\b/gi, '$1/kg')
+    .replace(/\btig-?\s*(?=\d)/gi, '@')
+    .replace(/(\d+(?:\.\d+)?)\s*(?:pesos?|piso)\b/gi, '₱$1')
+    .replace(/\b(?:ika-?\s*)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:ng|of)\s+([a-z]{3,})/gi, (all, d, mon) => (parseDate(`${mon} ${d}`, '2000-12-31') ? `${mon} ${d}` : all))
+    .replace(/\b(\d{1,2})(?:st|nd|rd|th)\b/gi, '$1')
+    .replace(/\bbatch\s*(\d{4})\s+(\d{1,2})\b/gi, (_, y, m) => `Batch ${y}-${pad(Number(m))}`)
+    // "May 3 patay" said aloud is "there are 3 dead", not May 3
+    .replace(/^may\s+(?=\d+\s+(?:na\s+)?(?:patay|namatay|manok|ulo|heads?|sako|kg|birds?|chickens?)\b)/i, 'meron ')
+    .trim();
 }
 
 /**

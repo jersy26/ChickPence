@@ -466,6 +466,68 @@ h2 {
   font-size: 12px;
 }
 
+/* Voice typing in the entry form */
+.voice-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px dashed var(--ln);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.voice-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.voice-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.voice-row select {
+  width: auto;
+}
+
+.voice-mic {
+  flex: 1;
+  background: var(--card);
+}
+
+.voice-mic.is-listening {
+  border-color: var(--bad);
+  color: var(--bad);
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  50% { box-shadow: 0 0 0 4px rgba(179, 38, 30, 0.15); }
+}
+
+.voice-msg {
+  font-size: 12px;
+}
+
+.voice-msg:empty {
+  display: none;
+}
+
+.voice-msg.is-ok { color: var(--ok); }
+.voice-msg.is-warn { color: var(--acc); font-weight: 600; }
+.voice-msg.is-info { color: var(--mut); }
+
+.voice-privacy {
+  font-size: 11px;
+}
+
+.form-field .is-uncertain {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+}
+
 .badge-pill {
   font-size: 11px;
   border: 1px solid var(--ln);

@@ -16,6 +16,7 @@ import { calcBatchMetrics, liveHeadCount } from '../services/allocationEngine.js
 import { Repository } from '../services/repository.js';
 import { openThresholdModal, openCloseBatchModal } from './modals.js';
 import { showToast } from './toast.js';
+import { isSpeechSupported, startDictation, VOICE_LANGS, getVoiceLang, setVoiceLang } from '../services/speechInput.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const NA = 'N/A';
@@ -187,12 +188,47 @@ function renderExpenseTable(expenses, allAllocations) {
 // Module-level flag: keep modal open across re-renders triggered by tab switches
 let _batchModalOpen = false;
 
-function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview) {
-  const val = (field, fallback = '') => (editingItem ? (editingItem[field] ?? fallback) : fallback);
+/**
+ * Voice typing above the entry form: mic + language, the transcript (editable,
+ * so a misheard word can be fixed and read again), and a status line.
+ * The mic is hidden where the browser has no speech recognition.
+ */
+export function renderVoiceBar(voice, { supported, online = true } = {}) {
+  const v = voice || {};
+  const micTitle = online
+    ? 'Say one entry, e.g. "may tatlong patay sa batch 9 kahapon"'
+    : 'Voice typing needs internet. You can still type the sentence.';
+  const lang = getVoiceLang();
+  return `
+    <div class="voice-bar">
+      ${supported ? `
+        <div class="voice-row">
+          <button type="button" class="btn-action voice-mic" id="btn-voice" title="${escapeAttr(micTitle)}" ${online && !v.busy ? '' : 'disabled'}>🎤 Speak</button>
+          <select id="voice-lang" aria-label="Voice language">
+            ${VOICE_LANGS.map((l) => `<option value="${l.code}" ${l.code === lang ? 'selected' : ''}>${l.label}</option>`).join('')}
+          </select>
+        </div>` : ''}
+      <div class="voice-row">
+        <input id="voice-transcript" type="text" autocomplete="off"
+          placeholder="${supported ? 'Or type one entry' : 'Type one entry, e.g. 3 patay sa batch 9'}"
+          value="${escapeAttr(v.transcript || '')}" ${v.busy ? 'disabled' : ''} />
+        <button type="button" class="btn-action" id="btn-voice-read" ${v.busy ? 'disabled' : ''}>Fill form</button>
+      </div>
+      <div class="voice-msg ${v.tone ? `is-${v.tone}` : ''}" id="voice-msg" role="status">${v.message ? escapeAttr(v.message) : ''}</div>
+      ${supported ? `<div class="voice-privacy text-mut">The browser's speech service turns your voice into text (Chrome and Edge send the audio online). Nothing is saved until you tap Save.</div>` : ''}
+    </div>`;
+}
+
+function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview, prefill = null) {
+  // A voice prefill fills the form like an edit, but saves as a new entry
+  const src = editingItem || prefill?.values || null;
+  const val = (field, fallback = '') => (src ? (src[field] ?? fallback) : fallback);
+  const flagged = new Set(editingItem ? [] : prefill?.uncertain || []);
+  const chk = (...fields) => (fields.some((f) => flagged.has(f)) ? 'class="is-uncertain" title="Check this value"' : '');
 
   if (activeTab === 'Expenses') {
-    const feedVal = editingItem ? (editingItem.feed_centavos / 100).toFixed(2) : '';
-    const otherVal = editingItem ? (editingItem.other_centavos / 100).toFixed(2) : '';
+    const feedVal = src?.feed_centavos != null ? (src.feed_centavos / 100).toFixed(2) : '';
+    const otherVal = src?.other_centavos != null ? (src.other_centavos / 100).toFixed(2) : '';
 
     let previewHtml = '';
     if (expensePreview && expensePreview.length) {
@@ -212,15 +248,15 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
       ${editingItem ? `<div class="ok-line flex-row" style="margin-bottom:6px;"><span class="text-mut">Editing entry</span><button class="btn-link" id="btn-cancel-edit">Cancel</button></div>` : ''}
       <label class="form-field">
         Date
-        <input id="input-exp-date" type="date" value="${val('entry_date', TODAY)}" />
+        <input id="input-exp-date" type="date" ${chk('date')} value="${val('entry_date', TODAY)}" />
       </label>
       <label class="form-field">
         Feed Amount (₱)
-        <input id="input-exp-feed" type="number" min="0" step="0.01" placeholder="0.00" value="${feedVal}" />
+        <input id="input-exp-feed" type="number" ${chk('feed_amount')} min="0" step="0.01" placeholder="0.00" value="${feedVal}" />
       </label>
       <label class="form-field">
         Other Costs (₱)
-        <input id="input-exp-other" type="number" min="0" step="0.01" placeholder="0.00" value="${otherVal}" />
+        <input id="input-exp-other" type="number" ${chk('other_amount')} min="0" step="0.01" placeholder="0.00" value="${otherVal}" />
       </label>
       ${previewHtml}
       <div style="display:flex;gap:8px;margin-top:8px;">
@@ -236,7 +272,7 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
   const batchSelector = openBatches.length
     ? `<label class="form-field">
         Batch
-        <select id="input-batch-select">
+        <select id="input-batch-select" ${chk('batch_id')}>
           ${renderBatchSelectorOptions(openBatches, selectedBatchId)}
         </select>
       </label>`
@@ -248,15 +284,15 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
       ${batchSelector}
       <label class="form-field">
         Date
-        <input id="input-feed-date" type="date" value="${val('entry_date', TODAY)}" />
+        <input id="input-feed-date" type="date" ${chk('date')} value="${val('entry_date', TODAY)}" />
       </label>
       <label class="form-field">
         Quantity Consumed (kg)
-        <input id="input-feed-kg" type="number" min="0.001" step="any" placeholder="0.000" value="${
-          editingItem
-            ? (editingItem.quantity_g !== undefined
-                ? ((Number(editingItem.quantity_g) || 0) / 1000).toFixed(3)
-                : (Number(editingItem.quantity_kg) || 0))
+        <input id="input-feed-kg" type="number" ${chk('quantity_kg')} min="0.001" step="any" placeholder="0.000" value="${
+          src
+            ? (src.quantity_g !== undefined
+                ? ((Number(src.quantity_g) || 0) / 1000).toFixed(3)
+                : (src.quantity_kg ?? ''))
             : ''
         }" />
       </label>
@@ -271,11 +307,11 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
       ${batchSelector}
       <label class="form-field">
         Date
-        <input id="input-mort-date" type="date" value="${val('entry_date', TODAY)}" />
+        <input id="input-mort-date" type="date" ${chk('date')} value="${val('entry_date', TODAY)}" />
       </label>
       <label class="form-field">
         Number of Deaths
-        <input id="input-mort-deaths" type="number" min="0" step="1" placeholder="0" value="${val('count', '')}" />
+        <input id="input-mort-deaths" type="number" ${chk('count')} min="0" step="1" placeholder="0" value="${val('count', '')}" />
       </label>
       <button class="btn-action primary" id="btn-save-entry" style="margin-top:8px;">
         ${editingItem ? 'Save Changes' : 'Save Entry'}
@@ -292,23 +328,23 @@ function renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingIt
     ${batchSelector}
     <label class="form-field">
       Sale Date
-      <input id="input-sale-date" type="date" value="${val('sale_date', TODAY)}" />
+      <input id="input-sale-date" type="date" ${chk('date')} value="${val('sale_date', TODAY)}" />
     </label>
     <label class="form-field">
       Buyer Name
-      <input id="input-sale-buyer" type="text" placeholder="e.g. Buyer (placeholder)" value="${val('buyer_name', '')}" />
+      <input id="input-sale-buyer" type="text" ${chk('buyer_name')} placeholder="e.g. Buyer (placeholder)" value="${val('buyer_name', '')}" />
     </label>
     <label class="form-field">
       Quantity Sold (heads)
-      <input id="input-sale-qty" type="number" min="1" step="1" placeholder="0" value="${val('quantity_sold', '')}" />
+      <input id="input-sale-qty" type="number" ${chk('quantity_sold')} min="1" step="1" placeholder="0" value="${val('quantity_sold', '')}" />
     </label>
     <label class="form-field">
       Total Weight (kg)
-      <input id="input-sale-kg" type="number" min="0.01" step="any" placeholder="0.00" value="${val('weight_kg', '')}" />
+      <input id="input-sale-kg" type="number" ${chk('weight_kg')} min="0.01" step="any" placeholder="0.00" value="${val('weight_kg', '')}" />
     </label>
     <label class="form-field">
       Price per kg (₱)
-      <input id="input-sale-ppk" type="number" min="0.01" step="any" placeholder="0.00" value="${val('price_per_kg', '')}" />
+      <input id="input-sale-ppk" type="number" ${chk('price_per_kg')} min="0.01" step="any" placeholder="0.00" value="${val('price_per_kg', '')}" />
     </label>
     <div class="ok-line flex-row" style="margin-top:4px;">
       <span>Total Amount</span>
@@ -417,7 +453,8 @@ export function renderBatches(
   expensePreview,
   collapsedBatchIds = new Set(),
   expenseVisibleCount = EXPENSE_PAGE_SIZE,
-  importState = null // { unavailableReason, queued, ready } for the "Scan logbook" action
+  importState = null, // { unavailableReason, queued, ready } for the "Scan logbook" action
+  voice = null // { transcript, message, tone, busy, prefill } for voice typing in the entry form
 ) {
   const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -467,7 +504,8 @@ export function renderBatches(
         <div class="tab-nav" style="margin: -4px -4px 4px;">
           ${tabButtons}
         </div>
-        ${renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview)}
+        ${editingItem ? '' : renderVoiceBar(voice, { supported: isSpeechSupported(), online: globalThis.navigator?.onLine !== false })}
+        ${renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview, voice?.prefill?.tab === activeTab ? voice.prefill : null)}
       </div>
     </div>
 
@@ -550,8 +588,80 @@ export function renderBatches(
 // LISTENERS
 // ---------------------------------------------------------------------------
 
+let _dictation = null; // the recording in progress, if any
+
+/** Mic → transcript → onVoiceResult(text), which parses it and prefills the form. */
+function attachVoiceListeners(container, onVoiceResult) {
+  const micBtn = container.querySelector('#btn-voice');
+  const langSelect = container.querySelector('#voice-lang');
+  const input = container.querySelector('#voice-transcript');
+  const msg = container.querySelector('#voice-msg');
+  if (!input) return;
+
+  _dictation?.stop(); // a re-render replaced the button that was listening
+  _dictation = null;
+
+  const say = (text, tone = '') => {
+    if (!msg) return;
+    msg.textContent = text;
+    msg.className = `voice-msg ${tone ? `is-${tone}` : ''}`;
+  };
+  const setListening = (on) => {
+    if (!micBtn) return;
+    micBtn.textContent = on ? '■ Stop' : '🎤 Speak';
+    micBtn.classList.toggle('is-listening', on);
+  };
+  const read = () => {
+    const text = input.value.trim();
+    if (!text) return say('Say or type one entry first.', 'warn');
+    onVoiceResult?.(text);
+  };
+
+  langSelect?.addEventListener('change', () => setVoiceLang(langSelect.value));
+  container.querySelector('#btn-voice-read')?.addEventListener('click', read);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      read();
+    }
+  });
+
+  micBtn?.addEventListener('click', () => {
+    if (_dictation) {
+      _dictation.stop(); // onFinal still runs with what was heard
+      return;
+    }
+    setListening(true);
+    say('Listening… say one entry.', 'info');
+    _dictation = startDictation({
+      lang: langSelect?.value || getVoiceLang(),
+      onInterim: (text) => {
+        input.value = text;
+      },
+      onFinal: (text) => {
+        _dictation = null;
+        setListening(false);
+        input.value = text;
+        onVoiceResult?.(text);
+      },
+      onError: (message) => {
+        _dictation = null;
+        setListening(false);
+        say(message, 'warn');
+      },
+      onEnd: () => {
+        _dictation = null;
+        setListening(false);
+        say('No speech was heard. Tap the mic and try again.', 'warn');
+      }
+    });
+  });
+}
+
 export function attachBatchesListeners(container, state, callbacks) {
-  const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview, onLoadMoreExpenses, onScanPhoto, onReviewScans, onAiSettings } = callbacks;
+  const { onTabChange, onReload, onNavigate, onSetEdit, onCancelEdit, onSelectBatch, onExpensePreview, onLoadMoreExpenses, onScanPhoto, onReviewScans, onAiSettings, onVoiceResult } = callbacks;
+
+  attachVoiceListeners(container, onVoiceResult);
 
   // Scan logbook: the file input sits inside the button label
   container.querySelector('#btn-ai-settings')?.addEventListener('click', () => onAiSettings?.());

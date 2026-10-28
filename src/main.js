@@ -21,6 +21,8 @@ import {
   resizeImage,
   parseImage,
   normalizeDrafts,
+  parseSpokenEntry,
+  draftToFormPrefill,
   queueImageJob,
   getReadyJobs,
   countPendingJobs,
@@ -47,6 +49,7 @@ const state = {
   activeTab: 'Expenses',
   editingItem: null,
   expensePreview: null,    // Array of { batchName, feedShare, otherShare } | null
+  voice: null,             // Voice typing in the entry form: { transcript, message, tone, busy, prefill } | null
   expenseVisibleCount: 15, // how many Farm Expenses rows are shown before "Load More"
   historySearch: '',
   historyStatus: 'All',
@@ -172,7 +175,8 @@ async function render() {
       state.expensePreview,
       state.collapsedBatchIds,
       state.expenseVisibleCount,
-      await loadImportState()
+      await loadImportState(),
+      state.voice
     );
 
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
@@ -193,6 +197,8 @@ async function render() {
           state.activeTab = tab;
           state.editingItem = null;
           state.expensePreview = null;
+          // Keep what was said so it can be read again, but not the other tab's values
+          if (state.voice) state.voice = { transcript: state.voice.transcript };
           render();
         },
         onReload: render,
@@ -219,34 +225,11 @@ async function render() {
         onCancelEdit: () => {
           state.editingItem = null;
           state.expensePreview = null;
+          state.voice = null;
           render();
         },
         onExpensePreview: async (date, feedPeso, otherPeso) => {
-          // Build preview synchronously from local DB
-          const feedCentavos = Math.round(feedPeso * 100);
-          const otherCentavos = Math.round(otherPeso * 100);
-          const fakeExpense = { expense_id: 'preview', entry_date: date, feed_centavos: feedCentavos, other_centavos: otherCentavos };
-
-          const [allBatches, allMort, allSales] = await Promise.all([
-            db.batches.filter((b) => !b.deleted_at).toArray(),
-            db.mortality_logs.filter((m) => !m.deleted_at).toArray(),
-            db.sales.filter((s) => !s.deleted_at).toArray()
-          ]);
-
-          const result = computeAllocationsForExpense(fakeExpense, allBatches, allMort, allSales);
-          if (!result) {
-            showToast(`No batch is active on ${date}. Cannot allocate.`);
-            state.expensePreview = null;
-          } else {
-            state.expensePreview = result.rows.map((row) => {
-              const batch = allBatches.find((b) => b.batch_id === row.batch_id);
-              return {
-                batchName: batch?.batch_name || row.batch_id,
-                feedShare: row.feed_centavos / 100,
-                otherShare: row.other_centavos / 100
-              };
-            });
-          }
+          state.expensePreview = await buildExpensePreview(date, feedPeso, otherPeso);
           render();
         },
         onLoadMoreExpenses: () => {
@@ -255,7 +238,8 @@ async function render() {
         },
         onScanPhoto: (file) => scanLogbookPhoto(file, openBatchesData.map((d) => d.batch)),
         onReviewScans: () => reviewNextScan(openBatchesData.map((d) => d.batch)),
-        onAiSettings: () => openLocalAiModal(render)
+        onAiSettings: () => openLocalAiModal(render),
+        onVoiceResult: (text) => fillFormFromVoice(text, openBatchesData.map((d) => d.batch))
       }
     );
 
@@ -291,7 +275,6 @@ async function render() {
   updateSyncIndicator();
 }
 
-/** Load all open batches with their full details */
 /** Export modal: detailed report of one batch, or the whole history. */
 function openExport(allBatches, defaultBatchId = null) {
   openExportModal({
@@ -404,6 +387,91 @@ async function processQueue() {
   }
 }
 
+/** Allocation preview of a not-yet-saved expense, from the local DB. null when no batch is active that day. */
+async function buildExpensePreview(date, feedPeso, otherPeso) {
+  const fakeExpense = {
+    expense_id: 'preview',
+    entry_date: date,
+    feed_centavos: Math.round(feedPeso * 100),
+    other_centavos: Math.round(otherPeso * 100)
+  };
+
+  const [allBatches, allMort, allSales] = await Promise.all([
+    db.batches.filter((b) => !b.deleted_at).toArray(),
+    db.mortality_logs.filter((m) => !m.deleted_at).toArray(),
+    db.sales.filter((s) => !s.deleted_at).toArray()
+  ]);
+
+  const result = computeAllocationsForExpense(fakeExpense, allBatches, allMort, allSales);
+  if (!result) {
+    showToast(`No batch is active on ${date}. Cannot allocate.`);
+    return null;
+  }
+  return result.rows.map((row) => {
+    const batch = allBatches.find((b) => b.batch_id === row.batch_id);
+    return {
+      batchName: batch?.batch_name || row.batch_id,
+      feedShare: row.feed_centavos / 100,
+      otherShare: row.other_centavos / 100
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Voice typing (spoken sentence → prefilled entry form → user taps Save)
+// ---------------------------------------------------------------------------
+
+const ENTRY_LABEL = { expense: 'farm expense', feed: 'feed', mortality: 'mortality', sale: 'sale' };
+const FIELD_LABEL = {
+  date: 'date', batch_id: 'batch', feed_amount: 'feed amount', other_amount: 'other costs', quantity_kg: 'quantity',
+  count: 'deaths', buyer_name: 'buyer', quantity_sold: 'heads', weight_kg: 'weight', price_per_kg: 'price per kg'
+};
+
+async function fillFormFromVoice(transcript, openBatches) {
+  state.voice = { transcript, message: 'Reading what you said…', tone: 'info', busy: true };
+  try {
+    const { entry, notes } = await parseSpokenEntry(transcript, openBatches.map((b) => b.batch_name), {
+      onProgress: (message) => {
+        state.voice = { ...state.voice, message: `${message} This can take a few minutes.` };
+        render();
+      }
+    });
+    if (!entry) {
+      state.voice = { transcript, message: `${notes} Try again, or fill in the form yourself.`, tone: 'warn' };
+      return render();
+    }
+
+    const [draft] = normalizeDrafts([entry], openBatches);
+    const prefill = draftToFormPrefill(draft);
+    state.activeTab = prefill.tab;
+    state.editingItem = null;
+    state.expensePreview = null;
+    if (prefill.batch_id) state.selectedBatchId = prefill.batch_id;
+
+    // Save Expense needs the allocation preview first
+    if (draft.type === 'expense' && (draft.feed_amount || draft.other_amount) && draft.date) {
+      state.expensePreview = await buildExpensePreview(draft.date, draft.feed_amount || 0, draft.other_amount || 0);
+    }
+
+    const check = prefill.uncertain.map((f) => FIELD_LABEL[f] || f);
+    state.voice = {
+      transcript,
+      prefill,
+      tone: check.length ? 'warn' : 'ok',
+      message: [
+        `Filled in a ${ENTRY_LABEL[draft.type]} entry.`,
+        check.length ? `Check the ${check.join(', ')}, then tap Save.` : 'Check it, then tap Save.',
+        notes
+      ].filter(Boolean).join(' ')
+    };
+  } catch (err) {
+    console.error('Voice entry failed', err);
+    state.voice = { transcript, message: `Could not read that: ${err.message}`, tone: 'warn' };
+  }
+  render();
+}
+
+/** Load all open batches with their full details */
 async function loadOpenBatchesData() {
   const openBatches = await Repository.getOpenBatches();
   const results = [];
@@ -419,6 +487,7 @@ function navigate(view, batchId = null) {
   if (batchId) state.selectedBatchId = batchId;
   state.editingItem = null;
   state.expensePreview = null;
+  state.voice = null;
   window.scrollTo({ top: 0, behavior: 'smooth' });
   render();
 }
@@ -429,6 +498,7 @@ async function handleLogout() {
   state.selectedBatchId = null;
   state.editingItem = null;
   state.expensePreview = null;
+  state.voice = null;
   render();
 }
 
