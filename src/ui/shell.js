@@ -2,18 +2,17 @@ import { syncEngine } from '../services/syncEngine.js';
 import { openSupabaseConfigModal } from './modals.js';
 import { checkAndSeedInitialData } from '../db/seed.js';
 
-export function renderShell(activeView, contentHtml, syncStatus, onNavigate, onLogout, onReload) {
-  const isOff = !syncStatus.online;
-  const pending = syncStatus.pending;
+/** Sidebar sync line: offline, waiting uploads, or changes the server refused (pure). */
+export function renderSyncStatus(syncStatus = {}) {
+  const { online = true, pending = 0, problems = 0, isSyncing = false } = syncStatus;
+  if (problems > 0) return `<span class="sync-bad">⚠ ${problems} could not upload</span>`;
+  if (!online) return `<b>● Offline${pending ? ` · ${pending} waiting` : ''}</b>`;
+  if (pending > 0) return `<b>● ${isSyncing ? 'Uploading' : `${pending} waiting to upload`}</b>`;
+  return `<span class="ok">● All synced</span>`;
+}
 
-  let syncHtml = '';
-  if (isOff) {
-    syncHtml = `<b>● Offline${pending ? ` · ${pending} pending sync` : ''}</b>`;
-  } else if (pending > 0) {
-    syncHtml = `<b>● ${pending} pending sync</b>`;
-  } else {
-    syncHtml = `<span class="ok">● All synced</span>`;
-  }
+export function renderShell(activeView, contentHtml, syncStatus, onNavigate, onLogout, onReload) {
+  const syncHtml = renderSyncStatus(syncStatus);
 
   const navItem = (key, label) => `
     <button class="nav-link ${activeView === key ? 'active' : ''}" data-nav="${key}">
@@ -37,6 +36,9 @@ export function renderShell(activeView, contentHtml, syncStatus, onNavigate, onL
           Logout
         </button>
 
+        <button type="button" class="sync-status-box sync-status" id="sidebar-sync-box" title="Sync: what is waiting to upload, and changes the server refused">
+          <span id="sync-indicator-text">${syncHtml}</span>
+        </button>
 
       </aside>
 
@@ -47,7 +49,9 @@ export function renderShell(activeView, contentHtml, syncStatus, onNavigate, onL
   `;
 }
 
-export function attachShellListeners(container, onNavigate, onLogout, onReload) {
+export function attachShellListeners(container, onNavigate, onLogout, onReload, onSyncStatus) {
+  container.querySelector('#sidebar-sync-box')?.addEventListener('click', () => onSyncStatus?.());
+
   container.querySelectorAll('[data-nav]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const target = btn.getAttribute('data-nav');

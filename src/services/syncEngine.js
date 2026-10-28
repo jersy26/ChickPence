@@ -46,14 +46,29 @@ class SyncEngine {
 
   async getSyncStatus() {
     const pending = await this.getPendingCount();
+    const problems = await db.outbox.filter((i) => !!i.last_error).count();
     const online = this.isOnline();
     return {
       online,
       isSimulatedOffline: this.isSimulatedOffline,
       pending,
+      problems,
       isSyncing: this.isSyncing,
       isSupabaseConnected: isSupabaseConfigured()
     };
+  }
+
+  /**
+   * Throw away a change the server keeps refusing (see discardChange), then
+   * recompute cost sharing and sync, which brings back the server's version
+   * of the record if there is one. Returns how many records were removed.
+   */
+  async discard(item) {
+    const removed = await discardChange(item);
+    await recomputeAllAllocations();
+    this.notifyStatus();
+    if (this.isOnline()) this.syncNow();
+    return removed;
   }
 
   handleNetworkChange() {
@@ -315,6 +330,30 @@ class SyncEngine {
 }
 
 export const syncEngine = new SyncEngine();
+
+/** Outbox items the server refused at least once, oldest first. */
+export const outboxProblems = (items) => items.filter((i) => i.last_error).sort((a, b) => a.id - b.id);
+
+/**
+ * Remove a refused change from this device: its queued uploads and the local
+ * record. A batch takes its own records with it (they cannot upload without
+ * it). If the server has an earlier version of a record, the next download
+ * puts it back. Returns the number of records removed.
+ * @param {object} item – an outbox item
+ * @param {object} database – Dexie db (tests pass a stand-in)
+ */
+export async function discardChange(item, database = db) {
+  const all = await database.outbox.toArray();
+  const keys = new Map([[`${item.table_name}:${item.record_id}`, [item.table_name, item.record_id]]]);
+  if (item.table_name === 'batches') {
+    for (const i of all) {
+      if (i.payload?.batch_id === item.record_id) keys.set(`${i.table_name}:${i.record_id}`, [i.table_name, i.record_id]);
+    }
+  }
+  await database.outbox.bulkDelete(all.filter((i) => keys.has(`${i.table_name}:${i.record_id}`)).map((i) => i.id));
+  for (const [table, id] of keys.values()) await database[table]?.delete(id);
+  return keys.size;
+}
 
 /**
  * Upload outbox items, batches first. One failure does not stop the rest;

@@ -3,7 +3,8 @@ import { AuthService } from './services/auth.js';
 import { Repository } from './services/repository.js';
 import { prepareLocalDataFor } from './db/localData.js';
 import { syncEngine } from './services/syncEngine.js';
-import { renderShell, attachShellListeners } from './ui/shell.js';
+import { renderShell, attachShellListeners, renderSyncStatus } from './ui/shell.js';
+import { openSyncProblemsModal } from './ui/syncProblemsModal.js';
 import { renderLogin, attachLoginListeners } from './ui/loginView.js';
 import { renderDashboard, attachDashboardListeners } from './ui/dashboardView.js';
 import { renderBatches, attachBatchesListeners } from './ui/batchesView.js';
@@ -107,24 +108,28 @@ async function initApp() {
   await render();
 }
 
+/** Sync screen (sidebar status): waiting uploads and refused changes, which can be retried or discarded. */
+function openSync() {
+  openSyncProblemsModal({
+    load: async () => {
+      const [items, batches] = await Promise.all([db.outbox.orderBy('id').toArray(), db.batches.toArray()]);
+      return { items, online: syncEngine.isOnline(), batchNames: new Map(batches.map((b) => [b.batch_id, b.batch_name])) };
+    },
+    onRetry: () => syncEngine.syncNow(),
+    onDiscard: async (item) => {
+      const removed = await syncEngine.discard(item);
+      showToast(`Discarded ${removed === 1 ? 'the change' : `${removed} records`} from this device.`);
+      render();
+    }
+  });
+}
+
 function updateSyncIndicator() {
   const syncBox = document.getElementById('sidebar-sync-box');
   if (!syncBox) return;
 
-  const isOff = !state.syncStatus.online;
-  const pending = state.syncStatus.pending;
-
-  let syncHtml = '';
-  if (isOff) {
-    syncHtml = `<b>● Offline${pending ? ` · ${pending} pending sync` : ''}</b>`;
-  } else if (pending > 0) {
-    syncHtml = `<b>● ${pending} pending sync</b>`;
-  } else {
-    syncHtml = `<span class="ok">● All synced</span>`;
-  }
-
   const indicatorText = document.getElementById('sync-indicator-text');
-  if (indicatorText) indicatorText.innerHTML = syncHtml;
+  if (indicatorText) indicatorText.innerHTML = renderSyncStatus(state.syncStatus);
 
   const toggleNetBtn = document.getElementById('btn-toggle-net');
   if (toggleNetBtn) {
@@ -165,7 +170,7 @@ async function render() {
     const insights = await showInsights('dashboard', buildDashboardFacts(openBatchesData, closedBatchesData, localToday()));
     contentHtml = renderDashboard(openBatchesData, closedBatchesData, state.collapsedBatchIds, insights);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
-    attachShellListeners(appContainer, navigate, handleLogout, render);
+    attachShellListeners(appContainer, navigate, handleLogout, render, openSync);
     attachDashboardListeners(appContainer, navigate, render, state.collapsedBatchIds, openBatchesData, closedBatchesData);
     attachInsightsCard(appContainer, () => refreshInsightsCard({ force: true }));
 
@@ -195,7 +200,7 @@ async function render() {
     );
 
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
-    attachShellListeners(appContainer, navigate, handleLogout, render);
+    attachShellListeners(appContainer, navigate, handleLogout, render, openSync);
     attachBatchesListeners(
       appContainer,
       {
@@ -269,7 +274,7 @@ async function render() {
 
     contentHtml = renderHistory(batchesWithFullData, state.historySearch, state.historyStatus);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
-    attachShellListeners(appContainer, navigate, handleLogout, render);
+    attachShellListeners(appContainer, navigate, handleLogout, render, openSync);
     attachHistoryListeners(appContainer, navigate, (search, status) => {
       if (search !== null) state.historySearch = search;
       if (status !== null) state.historyStatus = status;
@@ -288,7 +293,7 @@ async function render() {
       : null;
     contentHtml = renderSummary(batchData, insights);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
-    attachShellListeners(appContainer, navigate, handleLogout, render);
+    attachShellListeners(appContainer, navigate, handleLogout, render, openSync);
     attachSummaryListeners(appContainer, navigate, batchData?.batch
       ? async () => openExport(await Repository.getAllBatches(), batchId)
       : null);
