@@ -1,8 +1,8 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-28
-**Branch:** `main` (last feature merge: AI suggestions; not pushed yet)
-**Tests:** 145 passing (`npm test`)
+**Branch:** `main` (last feature merge: Whisper voice input; AI suggestions are pushed, Whisper is not yet)
+**Tests:** 153 passing (`npm test`)
 
 ---
 
@@ -14,15 +14,15 @@ ChickPence is mainly a reporting system, so we are adding four features:
 |---|---|---|
 | 1 | Export reports (Excel, PDF, CSV) | ✅ Done, merged, pushed |
 | 2 | Logbook photo scanning with a **local LLM (Ollama)** + draft review modal | ✅ Done and tested end to end on this PC |
-| 3 | Voice input in the entry form | ✅ Done, merged (tested by typing; real speech not tested yet) |
-| 3b | Voice privacy decision (online Web Speech vs local Whisper) | ⏳ Open |
+| 3 | Voice input in the entry form | ✅ Done, merged (tested by typing and with recorded speech; a real microphone not tested yet) |
+| 3b | Voice privacy: Web Speech (sent audio to Google/Microsoft) replaced by Whisper running in the browser | ✅ Done, merged; audio never leaves the device |
 | 4 | AI suggestions (local LLM) | ✅ Done, merged, tested in the app with Ollama on this PC |
 
 ### Architecture (updated: local LLM, no cloud AI)
 
 ```
 Logbook photo ─► Ollama OCR model (glm-ocr) ─► text ─┐
-Voice → text ────────────────────────────────────────┼─► logbookParser rules ─► Draft review modal ─┐
+Voice ─► Whisper in the browser ─► text ─────────────┼─► logbookParser rules ─► Draft review modal ─┐
                        lines the rules can't read ───┘   └► Ollama text model (fallback)          │
 Manual form (existing "+ Add New Log") ────────────────────────────────────────────────────────────┤
                                                                                                    ▼
@@ -31,7 +31,7 @@ Manual form (existing "+ Add New Log") ─────────────�
                                    Dexie + outbox       Export module        AI suggestions (local LLM)
                                    → Supabase sync      xlsx / pdf / csv     → Suggestions card
 ```
-The user asked for a local LLM instead of Claude, so the Supabase Edge Function `ai-parse` was removed. The browser talks to Ollama directly; photos never leave the computer and no internet or API key is needed.
+The user asked for a local LLM instead of Claude, so the Supabase Edge Function `ai-parse` was removed. The browser talks to Ollama directly; photos never leave the computer and no internet or API key is needed. Voice is turned into text by Whisper inside the browser (Transformers.js), so recordings never leave the device either.
 
 **Core rule:** AI never writes to the database. OCR and voice only produce *drafts*. The user confirms them, and they are saved through the existing `Repository.saveExpense / saveFeedLog / saveMortalityLog / saveSale`, so allocation, validation, the outbox and sync keep working unchanged.
 
@@ -146,40 +146,56 @@ Local branches `feature/ai-parse` and `feature/local-llm` still exist (not pushe
 
 ---
 
-## 4. Done: Phase 3 voice input
+## 4. Done: Phase 3 voice input (Whisper on the device)
 
 ### What the user sees
 - In the **+ Add New Log** modal (new entries only, not when editing): **🎤 Speak**, a language picker (Filipino / English (PH), remembered in localStorage `chickpence_voice_lang`), and a text box with the transcript plus **Fill form**.
-- Say one entry → the words appear live → the form switches to the right tab (Expenses / Feed / Mortality / Sales), picks the batch and fills the fields. Fields to check are highlighted, and a line says which ones. The user taps **Save** as usual, so the form is the review step and saving goes through the existing `Repository.save*` code.
+- Tap Speak, say one entry, pause → the recording stops by itself (or tap **■ Stop**) → "Turning your voice into text on this device…" → the form switches to the right tab (Expenses / Feed / Mortality / Sales), picks the batch and fills the fields. Fields to check are highlighted, and a line says which ones. The user taps **Save** as usual, so the form is the review step and saving goes through the existing `Repository.save*` code.
 - A misheard word can be fixed in the text box and read again with **Fill form** (Enter works too). The same box lets you type a sentence without the mic.
 - A spoken expense runs the allocation preview automatically, so **Save Expense** is ready.
-- The mic is hidden where the browser has no speech recognition (Firefox) and disabled offline. A line under it says the browser's speech service sends audio online and nothing is saved until Save.
+- The first time, "Loading the voice model… 45%" shows while the model downloads (about 73 MB). After that it works **offline**. Offline before the first download, the mic is disabled with a note; typing still works.
+- The line under the mic says the recording never leaves the device. The mic is hidden where the browser cannot record (no `MediaRecorder`, or a plain-`http` page on a LAN address).
+- **⚙ Local AI settings → Voice typing model:** whisper-base (default) or whisper-small (localStorage `chickpence_voice_model`).
 
-### How a sentence is read
-1. `normalizeSpoken` (`logbookParser.js`) rewrites speech into logbook wording: Filipino/English number words → digits ("isang daan at limampu" → 150, "dalawampu't lima" → 25, "labing-dalawa" → 12, "12k" → 12000), kilo → kg, "118 pesos per kilo" / "tig 118" → price per kg, "850 pesos" → ₱850, "ika-26 ng Oktubre" → "Oktubre 26", "batch 2026 9" → "Batch 2026-09", and a leading "May 3 patay" ("there are 3 dead") is not read as May 3.
-2. The same `parseRecord` rules as the logbook, with **today** as the default date. Rules added for speech (they also help logbook lines): more verbs (namatay, nagpakain, kumain, nagbenta, sold…), "3 ang namatay" / "patay … ay 5" word order, buyer after "kay"/"to", "at" read as "and" in "120 heads at 245 kg", the batch number is never counted as deaths, and a cost said without "pesos" after bayad/bumili/gastos/paid/bought.
-3. Only when the rules fail, the local text model (`extractEntries`). If the local AI is off, the user is told why and fills the form by hand. Only the first entry is used.
+### How it works
+1. **Recording** (`speechInput.js`): `getUserMedia` + `MediaRecorder`. A Web Audio level meter feeds `createSilenceDetector`, which stops after speech followed by 1.5 s of quiet, gives up after 7 s without speech (Whisper is not called), and caps a recording at 20 s. Tapping Stop always reads what was recorded.
+2. **Speech → text** (`whisperWorker.js`): the recording is decoded into a 16 kHz context (that resamples it), mixed to mono, and sent to a Web Worker that runs **Whisper with Transformers.js** (`@huggingface/transformers` 4.3.1, pinned), `dtype: 'q8'`, on WebAssembly. `language` is `tagalog` for Filipino and `english` for English (PH). The model loads while the user is still speaking.
+3. **Files:** the model comes from Hugging Face (`onnx-community/whisper-base` or `-small`) the first time. The ONNX runtime (26 MB `.wasm`) is served by the app itself: `whisperWorker.js` points `wasmPaths` at `node_modules/onnxruntime-web` so Vite bundles it, instead of Transformers.js's default jsDelivr CDN. Both are kept in the browser's Cache Storage (`transformers-cache`); `isVoiceModelCached` checks it to decide whether the mic works offline.
+4. `cleanTranscript` drops Whisper's tags (`[BLANK_AUDIO]`, `(music)`), the final period, and splits "3-Dead" into "3 Dead".
+5. **Reading the sentence** is unchanged: `normalizeSpoken` (`logbookParser.js`) rewrites speech into logbook wording (Filipino/English number words → digits, kilo → kg, "118 pesos per kilo" / "tig 118" → price per kg, "850 pesos" → ₱850, "ika-26 ng Oktubre" → "Oktubre 26", "batch 2026 9" → "Batch 2026-09", a leading "May 3 patay" is not May 3), then the same `parseRecord` rules as the logbook with today as the default date, and only when they fail the local text model (`extractEntries`). Only the first entry is used.
+
+### Measured on this PC (CPU only, 7 GB RAM)
+| | whisper-base q8 (default) | whisper-small q8 |
+|---|---|---|
+| Download | 73 MB | 240 MB |
+| Per sentence (Node, onnxruntime-node) | 4–5 s | 13–15 s |
+| In the app (browser, model cached) | 4.9 s from the end of speech to a filled form | not measured |
+
+English test recordings (Windows text-to-speech) were read correctly apart from small slips ("245 kilos" once came out as "245 kph"; the weight was then flagged for checking). The only Windows voices are English, so **Filipino could not be tested properly**: the English voice reading Tagalog came out garbled with both models.
 
 ### Files
 | File | Role |
 |---|---|
-| `src/services/speechInput.js` | Web Speech wrapper: `isSpeechSupported`, `startDictation` (interim + final text, keeps interim words when stopped early), `speechErrorMessage`, language setting |
-| `src/services/logbookParser.js` | `normalizeSpoken` + the spoken rules above |
-| `src/services/aiParseService.js` | `parseSpokenEntry` (rules → local AI fallback), `draftToFormPrefill` (draft → tab, batch, form values, fields to check) |
-| `src/ui/batchesView.js` | `renderVoiceBar`, prefill + highlight in the entry form, mic listeners |
-| `src/main.js` | `state.voice`, `fillFormFromVoice`, `buildExpensePreview` (shared by the Preview button and voice) |
-| `src/style.css` | `.voice-*` styles, `.form-field .is-uncertain` |
-| `tests/voiceInput.test.js` | 26 tests: number words, spoken sentences of every type, written lines unchanged, AI fallback with mocked `fetch`, prefill mapping, dictation with a fake recognizer, rendering |
+| `src/services/speechInput.js` | Recording, `createSilenceDetector`, Whisper worker client (`transcribe`, `preloadVoiceModel`), `cleanTranscript`, `micErrorMessage`, `isVoiceModelCached`, language and model settings |
+| `src/services/whisperWorker.js` | Transformers.js pipeline in a Web Worker, download progress, local ONNX runtime |
+| `src/services/logbookParser.js` | `normalizeSpoken` + the spoken rules |
+| `src/services/aiParseService.js` | `parseSpokenEntry` (rules → local AI fallback), `draftToFormPrefill` |
+| `src/ui/batchesView.js` | `renderVoiceBar` (offline / first-download notes), prefill + highlight, mic listeners |
+| `src/ui/localAiModal.js` | Voice typing model picker |
+| `src/main.js` | `state.voice`, `fillFormFromVoice`, `buildExpensePreview`; passes `isVoiceModelCached()` to the Batches page |
+| `vite.config.js` | `worker.format: 'es'` |
+| `tests/voiceInput.test.js` | Number words, spoken sentences, recorder with fake mic/recorder/Whisper (auto stop, no speech, Stop, abort, errors), silence detector, Whisper output through the rules, model cache check, voice bar states |
 
-### Tested
-- Unit tests and a production build pass.
-- In the app (Demo Mode): typed sentences for a sale, an expense (preview ran, Save enabled) and a mortality entry (batch highlighted when two batches are open); a saved entry reached the database, and the modal and voice bar were cleared. Phone width (375 px) fits.
-- **Not tested yet:** real speech through a microphone (the browser pane used for testing cannot speak). Try it in Chrome or Edge on the farm PC or a phone.
+### Decisions and gotchas
+- **Why in the browser, not a Whisper server:** nothing to install or start on the PC, works offline after the first download, and on a phone the phone does the work, so voice no longer depends on reaching the farm PC.
+- No live words while speaking (Whisper reads the whole recording at the end), unlike the old Web Speech version.
+- Recording plus Ollama: the voice model takes ~200–400 MB of browser memory while loaded, on a PC that is already short of memory (section 3).
+- The first Vite dev run after installing re-optimizes dependencies and reloads the page once.
 
 ### Still open
-- **Privacy:** Chrome/Edge Web Speech sends audio to Google/Microsoft, unlike the local-only photo scanning. It is stated in the app; it still needs a line in the PRD privacy section, or a switch to a local speech model (e.g. Whisper on a local server; `startDictation` is the only part to replace).
-- Web Speech needs internet. Offline, the mic is disabled but typing a sentence still works.
-- **Phones:** browsers only allow the microphone on `https` pages or `localhost`, but reaching Ollama from a phone needs the app on plain `http` (section 3). Using both from a phone needs an `https` proxy in front of Ollama.
+- **Real speech through a microphone, especially Filipino and Taglish, is not tested.** Try it in Chrome or Edge on the farm PC; if Filipino is poor, switch to whisper-small in ⚙.
+- **Phones:** the microphone only works on `https` pages (or `localhost`). Voice itself now runs on the phone, but a sentence the rules cannot read falls back to Ollama on the farm PC, which an `https` page cannot call over plain `http` (section 3).
+- Offline use after the first download is expected from the cache but was not tested with the network actually off.
 
 ### Commits (on `main`)
 ```

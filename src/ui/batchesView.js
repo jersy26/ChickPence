@@ -16,7 +16,7 @@ import { calcBatchMetrics, liveHeadCount } from '../services/allocationEngine.js
 import { Repository } from '../services/repository.js';
 import { openThresholdModal, openCloseBatchModal } from './modals.js';
 import { showToast } from './toast.js';
-import { isSpeechSupported, startDictation, VOICE_LANGS, getVoiceLang, setVoiceLang } from '../services/speechInput.js';
+import { isSpeechSupported, startDictation, VOICE_LANGS, getVoiceLang, setVoiceLang, voiceModelInfo } from '../services/speechInput.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const NA = 'N/A';
@@ -191,19 +191,21 @@ let _batchModalOpen = false;
 /**
  * Voice typing above the entry form: mic + language, the transcript (editable,
  * so a misheard word can be fixed and read again), and a status line.
- * The mic is hidden where the browser has no speech recognition.
+ * The mic is hidden where the browser cannot record (or the page is not https).
+ * Offline it works once the voice model has been downloaded (modelReady).
  */
-export function renderVoiceBar(voice, { supported, online = true } = {}) {
+export function renderVoiceBar(voice, { supported, online = true, modelReady = true } = {}) {
   const v = voice || {};
-  const micTitle = online
+  const usable = online || modelReady;
+  const micTitle = usable
     ? 'Say one entry, e.g. "may tatlong patay sa batch 9 kahapon"'
-    : 'Voice typing needs internet. You can still type the sentence.';
+    : 'The voice model is downloaded the first time you use voice typing. Connect to the internet once; you can still type the sentence.';
   const lang = getVoiceLang();
   return `
     <div class="voice-bar">
       ${supported ? `
         <div class="voice-row">
-          <button type="button" class="btn-action voice-mic" id="btn-voice" title="${escapeAttr(micTitle)}" ${online && !v.busy ? '' : 'disabled'}>🎤 Speak</button>
+          <button type="button" class="btn-action voice-mic" id="btn-voice" title="${escapeAttr(micTitle)}" ${usable && !v.busy ? '' : 'disabled'}>🎤 Speak</button>
           <select id="voice-lang" aria-label="Voice language">
             ${VOICE_LANGS.map((l) => `<option value="${l.code}" ${l.code === lang ? 'selected' : ''}>${l.label}</option>`).join('')}
           </select>
@@ -215,7 +217,9 @@ export function renderVoiceBar(voice, { supported, online = true } = {}) {
         <button type="button" class="btn-action" id="btn-voice-read" ${v.busy ? 'disabled' : ''}>Fill form</button>
       </div>
       <div class="voice-msg ${v.tone ? `is-${v.tone}` : ''}" id="voice-msg" role="status">${v.message ? escapeAttr(v.message) : ''}</div>
-      ${supported ? `<div class="voice-privacy text-mut">The browser's speech service turns your voice into text (Chrome and Edge send the audio online). Nothing is saved until you tap Save.</div>` : ''}
+      ${supported ? `<div class="voice-privacy text-mut">${usable
+        ? `Your voice is turned into text on this device; the recording is never sent anywhere.${modelReady ? '' : ` The first time, the voice model (about ${voiceModelInfo().sizeMb} MB) is downloaded.`} Nothing is saved until you tap Save.`
+        : 'Offline: voice typing works after the voice model has been downloaded once. You can still type the sentence.'}</div>` : ''}
     </div>`;
 }
 
@@ -454,7 +458,8 @@ export function renderBatches(
   collapsedBatchIds = new Set(),
   expenseVisibleCount = EXPENSE_PAGE_SIZE,
   importState = null, // { unavailableReason, queued, ready } for the "Scan logbook" action
-  voice = null // { transcript, message, tone, busy, prefill } for voice typing in the entry form
+  voice = null, // { transcript, message, tone, busy, prefill } for voice typing in the entry form
+  voiceModelReady = true // voice model already downloaded (needed for voice typing offline)
 ) {
   const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -504,7 +509,7 @@ export function renderBatches(
         <div class="tab-nav" style="margin: -4px -4px 4px;">
           ${tabButtons}
         </div>
-        ${editingItem ? '' : renderVoiceBar(voice, { supported: isSpeechSupported(), online: globalThis.navigator?.onLine !== false })}
+        ${editingItem ? '' : renderVoiceBar(voice, { supported: isSpeechSupported(), online: globalThis.navigator?.onLine !== false, modelReady: voiceModelReady })}
         ${renderEntryFormPanel(activeTab, openBatches, selectedBatchId, editingItem, expensePreview, voice?.prefill?.tab === activeTab ? voice.prefill : null)}
       </div>
     </div>
@@ -598,7 +603,7 @@ function attachVoiceListeners(container, onVoiceResult) {
   const msg = container.querySelector('#voice-msg');
   if (!input) return;
 
-  _dictation?.stop(); // a re-render replaced the button that was listening
+  _dictation?.abort(); // a re-render replaced the button that was listening
   _dictation = null;
 
   const say = (text, tone = '') => {
@@ -610,6 +615,16 @@ function attachVoiceListeners(container, onVoiceResult) {
     if (!micBtn) return;
     micBtn.textContent = on ? '■ Stop' : '🎤 Speak';
     micBtn.classList.toggle('is-listening', on);
+  };
+  // While Whisper reads the recording, the mic and the text box wait
+  const setReading = (on) => {
+    if (micBtn) micBtn.disabled = on;
+    input.disabled = on;
+  };
+  const done = () => {
+    _dictation = null;
+    setListening(false);
+    setReading(false);
   };
   const read = () => {
     const text = input.value.trim();
@@ -632,26 +647,27 @@ function attachVoiceListeners(container, onVoiceResult) {
       return;
     }
     setListening(true);
-    say('Listening… say one entry.', 'info');
+    say('Starting the microphone…', 'info');
     _dictation = startDictation({
       lang: langSelect?.value || getVoiceLang(),
-      onInterim: (text) => {
-        input.value = text;
+      onStatus: (text, stage) => {
+        if (stage !== 'listening') {
+          setListening(false);
+          setReading(true);
+        }
+        say(text, 'info');
       },
       onFinal: (text) => {
-        _dictation = null;
-        setListening(false);
+        done();
         input.value = text;
         onVoiceResult?.(text);
       },
       onError: (message) => {
-        _dictation = null;
-        setListening(false);
+        done();
         say(message, 'warn');
       },
       onEnd: () => {
-        _dictation = null;
-        setListening(false);
+        done();
         say('No speech was heard. Tap the mic and try again.', 'warn');
       }
     });

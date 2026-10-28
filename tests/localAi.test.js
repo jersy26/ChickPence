@@ -166,4 +166,12 @@ describe('prompts and settings modal', () => {
     expect(html).toMatch(/<option value="glm-ocr:latest" selected>/);
     expect(html).toMatch(/<option value="qwen3.5:4b" selected>/);
   });
+
+  it('lets the user pick the Whisper model for voice typing', () => {
+    const s = { url: 'http://localhost:11434', ocrModel: 'glm-ocr', textModel: 'qwen3.5:4b' };
+    expect(renderLocalAiModal(s)).toMatch(/<option value="onnx-community\/whisper-base" selected>/);
+    const html = renderLocalAiModal(s, null, 'onnx-community/whisper-small');
+    expect(html).toMatch(/<option value="onnx-community\/whisper-small" selected>/);
+    expect(html).toContain('never leaves the device');
+  });
 });

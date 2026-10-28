@@ -17,6 +17,7 @@ import { showToast } from './ui/toast.js';
 import { openImportReviewModal, openScanProgressModal } from './ui/importReviewModal.js';
 import { openLocalAiModal } from './ui/localAiModal.js';
 import { attachInsightsCard, replaceInsightsCard } from './ui/insightsCard.js';
+import { isVoiceModelCached } from './services/speechInput.js';
 import { buildDashboardFacts, buildBatchFacts, loadInsights, onInsightsChange } from './services/insightsService.js';
 import {
   localToday,
@@ -188,7 +189,8 @@ async function render() {
       state.collapsedBatchIds,
       state.expenseVisibleCount,
       await loadImportState(),
-      state.voice
+      state.voice,
+      await isVoiceModelCached()
     );
 
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
