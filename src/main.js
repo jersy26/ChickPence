@@ -9,7 +9,7 @@ import { renderLogin, attachLoginListeners } from './ui/loginView.js';
 import { renderDashboard, attachDashboardListeners } from './ui/dashboardView.js';
 import { renderBatches, attachBatchesListeners } from './ui/batchesView.js';
 import { renderHistory, attachHistoryListeners } from './ui/historyView.js';
-import { exportBatch, exportBatchList } from './services/exportService.js';
+import { exportBatch, exportBatchList, exportFarmExpenses } from './services/exportService.js';
 import { openExportModal } from './ui/exportMenu.js';
 import { renderSummary, attachSummaryListeners } from './ui/summaryView.js';
 import { computeAllocationsForExpense } from './services/allocationEngine.js';
@@ -324,15 +324,16 @@ async function refreshInsightsCard(opts) {
   replaceInsightsCard(appContainer, insights, () => refreshInsightsCard({ force: true }));
 }
 
-/** Export modal: detailed report of one batch, or the whole history. */
+/** Export modal: detailed report of one batch, the whole history, or the farm expenses. */
 function openExport(allBatches, defaultBatchId = null) {
   openExportModal({
     batches: allBatches,
     defaultBatchId,
     onExport: async ({ scope, batchId, format }) => {
+      if (scope === 'expenses') return exportFarmExpenses(await Repository.getAllExpenses(), format);
       if (scope === 'history') {
         const all = await Promise.all(allBatches.map((b) => Repository.getBatchFullDetails(b.batch_id)));
-        return exportBatchList(all.filter(Boolean), format);
+        return exportBatchList(all.filter(Boolean), format, await Repository.getAllExpenses());
       }
       const batchData = await Repository.getBatchFullDetails(batchId);
       if (!batchData) throw new Error('Batch not found');
@@ -486,7 +487,7 @@ async function readUnrecognisedWithAi(result, fileName, openBatches) {
   if (await aiUnavailableReason()) return { result, aiNotes: '' };
   const lines = result.unread.slice(0, MAX_AI_LINES);
   const ask = `${result.unread.length} ${result.unread.length === 1 ? 'line' : 'lines'} in ${fileName} ${result.unread.length === 1 ? 'was' : 'were'} not recognised.`
-    + ` Let the local AI read ${lines.length < result.unread.length ? `the first ${lines.length}` : 'them'}? This can take a few minutes.`;
+    + ` Let the local AI read ${lines.length < result.unread.length ? `the first ${lines.length}` : result.unread.length === 1 ? 'it' : 'them'}? This can take a few minutes.`;
   if (!confirm(ask)) return { result, aiNotes: '' };
 
   const controller = new AbortController();

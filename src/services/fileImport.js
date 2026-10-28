@@ -198,6 +198,9 @@ function sectionTitle(row) {
 
 const FEED_WORDS = /feed|patuka|pakain|sako|integra|starter|grower|finisher|booster/i;
 
+/** A sheet, section or file of farm expenses as entered (not a batch report's allocated shares) */
+const FARM_EXPENSES = /farm expenses?|gastos ng (farm|bukid)/i;
+
 /** One table row with a header → raw entry (the shape normalizeDrafts reads), 'skip', or null. */
 function rowToEntry(row, map, { contextType, today, fileBatch, reportShares }) {
   const get = (field) => {
@@ -281,8 +284,10 @@ export function batchFromFileName(fileName, batches = []) {
  */
 export function tablesToEntries(tables, { today, batches = [], fileName = '' }) {
   const fileBatch = batchFromFileName(fileName, batches);
-  // ChickPence's batch reports are named ChickPence_<batch>_<date>; the whole-history report has no entries
-  const reportShares = /^chickpence_/i.test(String(fileName));
+  // ChickPence's batch reports are named ChickPence_<batch>_<date> and list expense shares. The farm
+  // expenses export (ChickPence_Farm_Expenses_…, or the "Farm expenses" sheet / section of the
+  // whole-history report) lists the expenses themselves.
+  const reportShares = /^chickpence_/i.test(String(fileName)) && !FARM_EXPENSES.test(String(fileName).replace(/_/g, ' '));
   const entries = [];
   const unread = [];
   let skipped = 0;
@@ -293,6 +298,7 @@ export function tablesToEntries(tables, { today, batches = [], fileName = '' }) 
     const sheetType = typeFromName(table.name);
     if (sheetType === 'skip') continue; // a Summary sheet holds totals, not entries
     let contextType = sheetType;
+    let farmExpenses = FARM_EXPENSES.test(table.name || '');
     let map = null;
     let previousDate = null;
 
@@ -304,11 +310,16 @@ export function tablesToEntries(tables, { today, batches = [], fileName = '' }) 
       const header = headerMap(row);
       if (header) { map = header; continue; }
       const title = sectionTitle(row);
-      if (title) { contextType = title; map = null; continue; }
+      if (title) {
+        contextType = title;
+        farmExpenses = FARM_EXPENSES.test(source);
+        map = null;
+        continue;
+      }
       if (contextType === 'skip') continue;
 
       if (map) {
-        const entry = rowToEntry(row, map, { contextType, today, fileBatch, reportShares });
+        const entry = rowToEntry(row, map, { contextType, today, fileBatch, reportShares: reportShares && !farmExpenses });
         if (entry === 'skip') { skipped++; continue; }
         if (entry === 'share') { shares++; continue; }
         if (entry) {
@@ -338,7 +349,7 @@ export function tablesToEntries(tables, { today, batches = [], fileName = '' }) 
 export function importNotes({ unread = [], skipped = 0, shares = 0 }) {
   const notes = [];
   if (shares) {
-    notes.push(`${shares} expense ${shares === 1 ? 'row was' : 'rows were'} left out: a ChickPence batch report lists each batch's share of an expense, not the whole expense. Add farm expenses with + Add New Log.`);
+    notes.push(`${shares} expense ${shares === 1 ? 'row was' : 'rows were'} left out: a ChickPence batch report lists each batch's share of an expense, not the whole expense. To bring the expenses over, use Export → Farm expenses and import that file.`);
   }
   if (unread.length) {
     const shown = unread.slice(0, 5).map((t) => `"${t.length > 60 ? `${t.slice(0, 57)}…` : t}"`).join(', ');

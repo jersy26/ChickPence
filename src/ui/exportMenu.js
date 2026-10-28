@@ -15,9 +15,14 @@ const FORMAT_HINTS = {
     csv: 'Every record of the batch in one dated list.'
   },
   history: {
-    xlsx: 'One row per batch with cost, revenue, profit, mortality and FCR.',
-    pdf: 'Printable table comparing all batches.',
-    csv: 'One row per batch with cost, revenue, profit, mortality and FCR.'
+    xlsx: 'One row per batch with cost, revenue, profit, mortality and FCR, plus a Farm expenses sheet.',
+    pdf: 'Printable table comparing all batches, plus every farm expense.',
+    csv: 'One row per batch with cost, revenue, profit, mortality and FCR (farm expenses: export them on their own).'
+  },
+  expenses: {
+    xlsx: 'Every farm expense with its date, feed and other costs. Can be imported back.',
+    pdf: 'Printable list of every farm expense.',
+    csv: 'Every farm expense with its date, feed and other costs. Can be imported back.'
   }
 };
 
@@ -68,6 +73,14 @@ export function renderExportModal(batches, defaultBatchId) {
           <span class="text-mut">All ${batches.length} batches side by side, open and closed.</span>
         </span>
       </label>
+
+      <label class="export-option">
+        <input type="radio" name="export-scope" value="expenses" />
+        <span>
+          <b>Farm expenses</b>
+          <span class="text-mut">Every farm expense as entered, before it is shared between batches.</span>
+        </span>
+      </label>
     </fieldset>
 
     <fieldset class="export-options">
@@ -93,7 +106,7 @@ export function renderExportModal(batches, defaultBatchId) {
  * Open the export modal.
  * @param {object[]} batches – all batches for the picker (newest first)
  * @param {string|null} defaultBatchId – preselected batch (e.g. the summary being viewed)
- * @param {(choice: {scope: 'batch'|'history', batchId: string, format: string}) => Promise<string>} onExport
+ * @param {(choice: {scope: 'batch'|'history'|'expenses', batchId: string, format: string}) => Promise<string>} onExport
  *        – resolves with the downloaded file name
  */
 export function openExportModal({ batches, defaultBatchId = null, onExport }) {

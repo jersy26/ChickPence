@@ -18,7 +18,9 @@ import {
 } from '../src/services/fileImport.js';
 import * as XLSX from 'xlsx';
 import { normalizeDrafts } from '../src/services/aiParseService.js';
-import { buildBatchReport, buildBatchLedger, buildXlsxSheets, tableToCsv, renderReportBlob } from '../src/services/exportService.js';
+import {
+  buildBatchReport, buildBatchLedger, buildBatchListReport, buildFarmExpensesReport, buildXlsxSheets, tableToCsv, renderReportBlob
+} from '../src/services/exportService.js';
 import { renderImportReviewModal } from '../src/ui/importReviewModal.js';
 
 const today = '2026-10-29';
@@ -133,6 +135,46 @@ describe('ChickPence exports read back', () => {
     const result = tablesToEntries([{ name: '', rows }], { today, batches, fileName: `${exportName}.pdf` });
     expect(result.entries.map(pick).sort(byDateType)).toEqual(expectedFromExport);
     expect(result.shares).toBe(1);
+  });
+});
+
+describe('farm expenses exported and read back', () => {
+  const expenses = [
+    { expense_id: 'e2', entry_date: '2026-10-27', feed_centavos: 0, other_centavos: 85000 },
+    { expense_id: 'e1', entry_date: '2026-10-26', feed_centavos: 1250050, other_centavos: 0 },
+    { expense_id: 'e3', entry_date: '2026-10-25', feed_centavos: 100, other_centavos: 100, deleted_at: '2026-10-26' }
+  ];
+  const expected = [
+    { type: 'expense', date: '2026-10-26', feed: 12500.5, other: 0 },
+    { type: 'expense', date: '2026-10-27', feed: 0, other: 850 }
+  ];
+  const historyName = 'ChickPence_Batch_History_2026-10-29';
+
+  it('Excel whole history: the Farm expenses sheet imports, the Batches sheet does not', async () => {
+    const buffer = await writeXlsxFile(buildXlsxSheets(buildBatchListReport([batchData], expenses))).toBuffer();
+    const sheets = await readExcelFile(new Blob([buffer]));
+    expect(sheets.map((s) => s.sheet)).toEqual(['Batches', 'Farm expenses']);
+    const result = tablesToEntries(sheets.map((s) => ({ name: s.sheet, rows: s.data })), { today, batches, fileName: `${historyName}.xlsx` });
+    expect(result.entries.map(pick)).toEqual(expected);
+    expect(result.shares).toBe(0);
+  });
+
+  it('PDF whole history: the Farm expenses section imports', async () => {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const blob = await renderReportBlob(buildBatchListReport([batchData], expenses), 'pdf');
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), useSystemFonts: true }).promise;
+    const result = tablesToEntries([{ name: '', rows: await pdfRows(doc) }], { today, batches, fileName: `${historyName}.pdf` });
+    expect(result.entries.map(pick)).toEqual(expected);
+    expect(result.shares).toBe(0);
+  }, 20000);
+
+  it('CSV of the farm expenses on their own', () => {
+    const report = buildFarmExpensesReport(expenses);
+    const result = tablesToEntries([{ name: '', rows: parseCsv(tableToCsv(report.sections[0].table)) }], {
+      today, batches, fileName: 'ChickPence_Farm_Expenses_2026-10-29.csv'
+    });
+    expect(result.entries.map(pick)).toEqual(expected);
+    expect(result.shares).toBe(0);
   });
 });
 
