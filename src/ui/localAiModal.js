@@ -2,9 +2,10 @@ import { openModal, closeModal } from './modals.js';
 import { showToast } from './toast.js';
 import { escapeHtml } from './importReviewModal.js';
 import { getLlmSettings, setLlmSettings, listModels } from '../services/localLlm.js';
+import { VOICE_MODELS, getVoiceModel, setVoiceModel } from '../services/speechInput.js';
 
 /** Modal body (pure, testable without a DOM). */
-export function renderLocalAiModal(settings, installed = null) {
+export function renderLocalAiModal(settings, installed = null, voiceModel = getVoiceModel()) {
   const options = (selected) => {
     if (!installed?.length) return '';
     return installed
@@ -21,7 +22,7 @@ export function renderLocalAiModal(settings, installed = null) {
       <button class="btn-icon" id="btn-close-modal" aria-label="Close">✕</button>
     </div>
     <div class="text-mut">
-      Logbook scanning runs on this computer with <b>Ollama</b>. Photos never leave the farm and no internet is needed.
+      Logbook scanning and suggestions run on this computer with <b>Ollama</b>. Photos and records never leave the farm and no internet is needed.
     </div>
 
     <label class="form-field">
@@ -35,6 +36,14 @@ export function renderLocalAiModal(settings, installed = null) {
       ${installed === null ? '' : installed.length ? `Connected · ${installed.length} models installed.` : 'Connected, but no models are installed.'}
     </div>
 
+    <label class="form-field">
+      Voice typing model
+      <select id="input-voice-model">
+        ${VOICE_MODELS.map((m) => `<option value="${escapeHtml(m.id)}" ${m.id === voiceModel ? 'selected' : ''}>${escapeHtml(m.label)}</option>`).join('')}
+      </select>
+      <span class="text-mut ai-hint">Whisper runs in this browser, so the recording never leaves the device. It is downloaded once, the first time you use the mic.</span>
+    </label>
+
     <div class="flex-row" style="margin-top: 4px;">
       <button class="btn-action" id="btn-test-llm">Test connection</button>
       <div style="display:flex;gap:8px;">
@@ -46,14 +55,15 @@ export function renderLocalAiModal(settings, installed = null) {
 }
 
 export function openLocalAiModal(onSaved) {
-  const show = (settings, installed) => {
-    openModal(renderLocalAiModal(settings, installed));
+  const show = (settings, installed, voiceModel = getVoiceModel()) => {
+    openModal(renderLocalAiModal(settings, installed, voiceModel));
     const root = document.getElementById('modal');
     const read = () => ({
       url: root.querySelector('#input-llm-url').value.trim(),
       ocrModel: root.querySelector('#input-llm-ocr').value.trim(),
       textModel: root.querySelector('#input-llm-text').value.trim()
     });
+    const readVoiceModel = () => root.querySelector('#input-voice-model').value;
 
     root.querySelector('#btn-close-modal').addEventListener('click', closeModal);
 
@@ -63,7 +73,7 @@ export function openLocalAiModal(onSaved) {
       result.textContent = 'Checking…';
       try {
         const models = await listModels(current.url.replace(/\/+$/, ''));
-        show(current, models); // re-render with model dropdowns
+        show(current, models, readVoiceModel()); // re-render with model dropdowns
       } catch (_) {
         result.textContent = `Cannot reach Ollama at ${current.url}. Start the Ollama app, then try again.`;
       }
@@ -71,6 +81,7 @@ export function openLocalAiModal(onSaved) {
 
     root.querySelector('#btn-reset-llm').addEventListener('click', () => {
       setLlmSettings(null);
+      setVoiceModel(null);
       show(getLlmSettings(), installed);
       showToast('Local AI settings reset to defaults');
     });
@@ -79,6 +90,7 @@ export function openLocalAiModal(onSaved) {
       const s = read();
       if (!s.url || !s.ocrModel || !s.textModel) return showToast('Fill in the address and both models.');
       setLlmSettings(s);
+      setVoiceModel(readVoiceModel());
       closeModal();
       showToast('Local AI settings saved');
       onSaved?.();

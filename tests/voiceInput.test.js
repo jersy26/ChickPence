@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { normalizeSpoken, parseRecord, parseRecords } from '../src/services/logbookParser.js';
 import { parseSpokenEntry, draftToFormPrefill, normalizeDrafts } from '../src/services/aiParseService.js';
 import { setLlmSettings } from '../src/services/localLlm.js';
-import { startDictation, speechErrorMessage, isSpeechSupported } from '../src/services/speechInput.js';
+import { startDictation, isSpeechSupported, micErrorMessage, createSilenceDetector, cleanTranscript, isVoiceModelCached, SILENCE } from '../src/services/speechInput.js';
 import { renderBatches, renderVoiceBar } from '../src/ui/batchesView.js';
 
 const today = '2026-10-28';
@@ -153,62 +153,159 @@ describe('draftToFormPrefill', () => {
   });
 });
 
-describe('speechInput', () => {
-  class FakeRecognition {
-    static last = null;
-    constructor() { FakeRecognition.last = this; this.started = false; }
-    start() { this.started = true; }
-    stop() { this.onend?.(); }
-    say(pieces) {
-      // pieces: [[text, isFinal], ...]
-      const results = pieces.map(([transcript, isFinal]) => Object.assign([{ transcript }], { isFinal }));
-      this.onresult?.({ results });
-    }
-  }
-  const win = { webkitSpeechRecognition: FakeRecognition };
+describe('speechInput (Whisper on this device)', () => {
+  afterEach(() => vi.useRealTimers());
 
-  it('detects support', () => {
+  /** Fake browser pieces: mic levels per 100 ms tick, a recorder, decode and Whisper. */
+  function fakeMedia({ levels = [], text = 'may tatlong patay', failMic = null, failTranscribe = false } = {}) {
+    let clock = 0;
+    const calls = { transcribe: [], decode: 0, preload: 0, tracksStopped: 0, meterClosed: 0 };
+    class Recorder {
+      constructor() { this.state = 'inactive'; this.mimeType = 'audio/webm'; }
+      start() { this.state = 'recording'; }
+      stop() {
+        this.state = 'inactive';
+        this.ondataavailable({ data: new Blob(['x']) });
+        this.onstop();
+      }
+    }
+    const media = {
+      getUserMedia: async () => {
+        if (failMic) throw Object.assign(new Error('denied'), { name: failMic });
+        return { getTracks: () => [{ stop: () => calls.tracksStopped++ }] };
+      },
+      MediaRecorder: Recorder,
+      levelMeter: () => ({ level: () => (levels.length ? levels.shift() : 0), close: () => calls.meterClosed++ }),
+      decode: async () => { calls.decode++; return new Float32Array(16000); },
+      transcribe: async (audio, opts) => {
+        calls.transcribe.push(opts);
+        if (failTranscribe) throw new Error('model failed');
+        return text;
+      },
+      preload: () => calls.preload++,
+      now: () => (clock += 100)
+    };
+    return { media, calls };
+  }
+
+  const speech = (ticks) => Array(ticks).fill(0.08);
+  const quiet = (ticks) => Array(ticks).fill(0.002);
+
+  function record(options) {
+    vi.useFakeTimers();
+    const handlers = { onStatus: vi.fn(), onFinal: vi.fn(), onError: vi.fn(), onEnd: vi.fn() };
+    const { media, calls } = fakeMedia(options);
+    const dictation = startDictation({ lang: 'fil-PH', media, ...handlers });
+    return { ...handlers, calls, dictation };
+  }
+
+  it('detects support only where the browser can record', () => {
+    const win = { navigator: { mediaDevices: { getUserMedia() {} } }, MediaRecorder() {}, AudioContext() {}, Worker() {} };
     expect(isSpeechSupported(win)).toBe(true);
+    expect(isSpeechSupported({ ...win, navigator: {} })).toBe(false); // plain http on a LAN address has no mediaDevices
     expect(isSpeechSupported({})).toBe(false);
   });
 
-  it('reports interim text and the final transcript', () => {
-    const onInterim = vi.fn();
-    const onFinal = vi.fn();
-    startDictation({ lang: 'fil-PH', onInterim, onFinal, win });
-    const rec = FakeRecognition.last;
-    expect(rec.started).toBe(true);
-    expect(rec.lang).toBe('fil-PH');
-    rec.say([['may tatlong', false]]);
-    rec.say([['may tatlong patay', true]]);
-    rec.onend();
-    expect(onInterim).toHaveBeenLastCalledWith('may tatlong patay');
-    expect(onFinal).toHaveBeenCalledWith('may tatlong patay');
+  it('stops by itself after speech and a pause, then reads it on the device', async () => {
+    const r = record({ levels: [...quiet(3), ...speech(12), ...quiet(30)] });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(r.onStatus).toHaveBeenCalledWith('Listening… say one entry, then pause.', 'listening');
+    expect(r.onStatus).toHaveBeenCalledWith('Turning your voice into text on this device…', 'transcribing');
+    expect(r.calls.preload).toBe(1);
+    expect(r.calls.decode).toBe(1);
+    expect(r.calls.transcribe[0].lang).toBe('fil-PH');
+    expect(r.onFinal).toHaveBeenCalledWith('may tatlong patay');
+    expect(r.calls.tracksStopped).toBe(1); // the mic is released
+    expect(r.calls.meterClosed).toBe(1);
   });
 
-  it('keeps interim words when stopped early', () => {
-    const onFinal = vi.fn();
-    const { stop } = startDictation({ onFinal, win });
-    FakeRecognition.last.say([['benta kay Nena', false]]);
-    stop();
-    expect(onFinal).toHaveBeenCalledWith('benta kay Nena');
+  it('gives up without calling Whisper when nothing is said', async () => {
+    const r = record({ levels: quiet(200) });
+    await vi.advanceTimersByTimeAsync(SILENCE.noSpeechMs + 500);
+    expect(r.onEnd).toHaveBeenCalledTimes(1);
+    expect(r.calls.transcribe).toHaveLength(0);
+    expect(r.onFinal).not.toHaveBeenCalled();
   });
 
-  it('reports errors once and stays quiet on abort', () => {
-    const onError = vi.fn();
-    const onEnd = vi.fn();
-    startDictation({ onError, onEnd, win });
-    FakeRecognition.last.onerror({ error: 'network' });
-    FakeRecognition.last.onend();
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining('needs internet'));
-    expect(onEnd).not.toHaveBeenCalled();
-    expect(speechErrorMessage('aborted')).toBeNull();
+  it('Stop reads what was recorded, even if it sounded quiet', async () => {
+    const r = record({ levels: quiet(200) });
+    await vi.advanceTimersByTimeAsync(1000);
+    r.dictation.stop();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(r.calls.transcribe).toHaveLength(1);
+    expect(r.onFinal).toHaveBeenCalledWith('may tatlong patay');
   });
 
-  it('says so when the browser has no speech recognition', () => {
-    const onError = vi.fn();
-    startDictation({ onError, win: {} });
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining('not supported'));
+  it('abort throws the recording away', async () => {
+    const r = record({ levels: speech(200) });
+    await vi.advanceTimersByTimeAsync(500);
+    r.dictation.abort();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(r.calls.transcribe).toHaveLength(0);
+    expect(r.onFinal).not.toHaveBeenCalled();
+    expect(r.onEnd).not.toHaveBeenCalled();
+    expect(r.calls.tracksStopped).toBe(1);
+  });
+
+  it('reports a blocked microphone and a failed model', async () => {
+    const blocked = record({ failMic: 'NotAllowedError' });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(blocked.onError).toHaveBeenCalledWith(expect.stringContaining('Microphone access was blocked'));
+
+    const failed = record({ levels: [...speech(10), ...quiet(30)], failTranscribe: true });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(failed.onError).toHaveBeenCalledWith('Could not turn the recording into text: model failed');
+  });
+
+  it('error messages for missing or busy microphones', () => {
+    expect(micErrorMessage({ name: 'NotFoundError' })).toBe('No microphone was found.');
+    expect(micErrorMessage({ name: 'NotReadableError' })).toContain('another app');
+    expect(micErrorMessage({ name: 'Weird', message: 'x' })).toBe('Could not start the microphone: x');
+  });
+
+  it('silence detector: waits for speech, then for a pause; caps long recordings', () => {
+    const d = createSilenceDetector({ startLevel: 0.02, endLevel: 0.01, endSilenceMs: 300, noSpeechMs: 1000, maxMs: 2000 });
+    expect(d.push(0.001, 0)).toBe('continue');
+    expect(d.push(0.05, 100)).toBe('continue');
+    expect(d.heard).toBe(true);
+    expect(d.push(0.015, 200)).toBe('continue'); // between the levels: still talking
+    expect(d.push(0.005, 300)).toBe('continue');
+    expect(d.push(0.005, 500)).toBe('continue');
+    expect(d.push(0.005, 600)).toBe('stop');
+
+    const never = createSilenceDetector({ startLevel: 0.02, endLevel: 0.01, endSilenceMs: 300, noSpeechMs: 1000, maxMs: 2000 });
+    expect(never.push(0, 0)).toBe('continue');
+    expect(never.push(0, 1000)).toBe('no-speech');
+
+    const long = createSilenceDetector({ startLevel: 0.02, endLevel: 0.01, endSilenceMs: 300, noSpeechMs: 1000, maxMs: 2000 });
+    long.push(0.05, 0);
+    expect(long.push(0.05, 2000)).toBe('stop');
+  });
+
+  it('cleans Whisper output before the rules read it', () => {
+    expect(cleanTranscript(' [BLANK_AUDIO] 3 dead in batch 9 yesterday. ')).toBe('3 dead in batch 9 yesterday');
+    expect(cleanTranscript('(music)')).toBe('');
+    expect(cleanTranscript('3-Dead in batch 9 yesterday')).toBe('3 Dead in batch 9 yesterday');
+    expect(cleanTranscript('ika-26 ng Oktubre, Batch 2026-09')).toBe('ika-26 ng Oktubre, Batch 2026-09');
+  });
+
+  it('reads what Whisper wrote for test recordings', async () => {
+    // Real whisper-base output for Windows text-to-speech recordings
+    const sale = await parseSpokenEntry(cleanTranscript('Sold 120 heads to Alingnina, 245 kilos at 118 pesos per kilo, Batch 9.'), batches, { today });
+    expect(sale.entry).toMatchObject({ type: 'sale', quantity_sold: 120, weight_kg: 245, price_per_kg: 118, batch_hint: 'Batch 2026-09', buyer_name: 'Alingnina' });
+    const dead = await parseSpokenEntry(cleanTranscript('3 dead in batch 9 yesterday.'), batches, { today });
+    expect(dead.entry).toMatchObject({ type: 'mortality', count: 3, date: '2026-10-27', batch_hint: 'Batch 2026-09' });
+    // The same sentence as the in-browser run wrote it
+    const browser = await parseSpokenEntry(cleanTranscript('3-Dead in batch 9 yesterday'), batches, { today });
+    expect(browser.entry).toMatchObject({ type: 'mortality', count: 3, date: '2026-10-27', batch_hint: 'Batch 2026-09' });
+  });
+
+  it('knows whether the voice model is already downloaded', async () => {
+    const win = (urls) => ({ caches: { open: async () => ({ keys: async () => urls.map((url) => ({ url })) }) } });
+    const base = 'https://huggingface.co/onnx-community/whisper-base/resolve/main/onnx/decoder_model_merged_quantized.onnx';
+    expect(await isVoiceModelCached('onnx-community/whisper-base', win([base]))).toBe(true);
+    expect(await isVoiceModelCached('onnx-community/whisper-small', win([base]))).toBe(false);
+    expect(await isVoiceModelCached('onnx-community/whisper-base', {})).toBe(false);
   });
 });
 
@@ -225,8 +322,19 @@ describe('voice bar and prefilled form', () => {
     expect(renderVoiceBar(null, { supported: true })).toContain('id="btn-voice"');
   });
 
-  it('disables the mic offline', () => {
-    expect(renderVoiceBar(null, { supported: true, online: false })).toMatch(/id="btn-voice"[^>]*disabled/);
+  it('works offline once the voice model is downloaded', () => {
+    const offlineNoModel = renderVoiceBar(null, { supported: true, online: false, modelReady: false });
+    expect(offlineNoModel).toMatch(/id="btn-voice"[^>]*disabled/);
+    expect(offlineNoModel).toContain('after the voice model has been downloaded once');
+    expect(renderVoiceBar(null, { supported: true, online: false, modelReady: true })).not.toMatch(/id="btn-voice"[^>]*disabled/);
+  });
+
+  it('says the recording stays on the device, and mentions the first download', () => {
+    const first = renderVoiceBar(null, { supported: true, online: true, modelReady: false });
+    expect(first).toContain('never sent anywhere');
+    expect(first).toContain('about 73 MB');
+    expect(first).not.toContain('Google');
+    expect(renderVoiceBar(null, { supported: true, online: true, modelReady: true })).not.toContain('73 MB');
   });
 
   it('escapes the transcript and message', () => {

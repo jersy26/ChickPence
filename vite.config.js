@@ -49,6 +49,10 @@ export default defineConfig({
       }
     })
   ],
+  // The Whisper worker (voice typing) imports Transformers.js as an ES module
+  worker: {
+    format: 'es'
+  },
   server: {
     port: 3000
   }
