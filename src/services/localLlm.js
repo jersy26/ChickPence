@@ -65,7 +65,7 @@ export async function listModels(url = getLlmSettings().url) {
     .map((m) => m.name);
 }
 
-const hasModel = (installed, name) =>
+export const hasModel = (installed, name) =>
   installed.includes(name) || installed.includes(`${name}:latest`);
 
 /**
@@ -203,6 +203,29 @@ async function chat(body, signal) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.error) throw new Error(data.error || `Local AI error ${res.status}`);
   return data.message?.content ?? '';
+}
+
+/**
+ * Ask the text model for JSON that matches `schema`. Returns the parsed object.
+ * Used by the AI suggestions (insightsService.js).
+ */
+export async function askTextModelJson({ system, user, schema, signal, options }) {
+  const { textModel } = getLlmSettings();
+  const content = await chat({
+    model: textModel,
+    think: false,
+    format: schema,
+    options,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user }
+    ]
+  }, signal);
+  try {
+    return JSON.parse(content);
+  } catch (_) {
+    throw new Error('The local AI returned an unreadable answer. Try again.');
+  }
 }
 
 /** Step 1: read the photo into plain text, one logbook line per line. */

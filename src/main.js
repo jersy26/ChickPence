@@ -16,7 +16,10 @@ import { db } from './db/dexie.js';
 import { showToast } from './ui/toast.js';
 import { openImportReviewModal, openScanProgressModal } from './ui/importReviewModal.js';
 import { openLocalAiModal } from './ui/localAiModal.js';
+import { attachInsightsCard, replaceInsightsCard } from './ui/insightsCard.js';
+import { buildDashboardFacts, buildBatchFacts, loadInsights, onInsightsChange } from './services/insightsService.js';
 import {
+  localToday,
   aiUnavailableReason,
   resizeImage,
   parseImage,
@@ -53,6 +56,7 @@ const state = {
   expenseVisibleCount: 15, // how many Farm Expenses rows are shown before "Load More"
   historySearch: '',
   historyStatus: 'All',
+  insights: null,          // Suggestions card on screen: { scope, facts } | null
   collapsedBatchIds: getInitialCollapsedBatchIds(),
   syncStatus: {
     online: true,
@@ -91,6 +95,11 @@ async function initApp() {
 
   // Scan photos that were waiting for the local AI (no internet needed)
   if (AuthService.isLoggedIn()) processQueue();
+
+  // Suggestions finished in the background: update the card if it is on screen
+  onInsightsChange((scope) => {
+    if (state.insights?.scope === scope) refreshInsightsCard();
+  });
 
   // 4. Initial render
   await render();
@@ -143,6 +152,7 @@ async function render() {
   }
 
   let contentHtml = '';
+  state.insights = null;
 
   if (state.view === 'dashboard') {
     const [openBatchesData, closedBatchesData] = await Promise.all([
@@ -150,10 +160,12 @@ async function render() {
       Repository.getClosedBatchesWithData()
     ]);
 
-    contentHtml = renderDashboard(openBatchesData, closedBatchesData, state.collapsedBatchIds);
+    const insights = await showInsights('dashboard', buildDashboardFacts(openBatchesData, closedBatchesData, localToday()));
+    contentHtml = renderDashboard(openBatchesData, closedBatchesData, state.collapsedBatchIds, insights);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render);
     attachDashboardListeners(appContainer, navigate, render, state.collapsedBatchIds, openBatchesData, closedBatchesData);
+    attachInsightsCard(appContainer, () => refreshInsightsCard({ force: true }));
 
   } else if (state.view === 'batches') {
     const [openBatchesData, expenses] = await Promise.all([
@@ -262,17 +274,43 @@ async function render() {
 
   } else if (state.view === 'summary') {
     const batchId = state.selectedBatchId;
-    const batchData = batchId ? await Repository.getBatchFullDetails(batchId) : null;
+    const [batchData, closedBatchesData] = await Promise.all([
+      batchId ? Repository.getBatchFullDetails(batchId) : null,
+      Repository.getClosedBatchesWithData()
+    ]);
 
-    contentHtml = renderSummary(batchData);
+    const insights = batchData?.batch
+      ? await showInsights(`batch:${batchId}`, buildBatchFacts(batchData, closedBatchesData, localToday()))
+      : null;
+    contentHtml = renderSummary(batchData, insights);
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render);
     attachSummaryListeners(appContainer, navigate, batchData?.batch
       ? async () => openExport(await Repository.getAllBatches(), batchId)
       : null);
+    attachInsightsCard(appContainer, () => refreshInsightsCard({ force: true }));
   }
 
   updateSyncIndicator();
+}
+
+// ---------------------------------------------------------------------------
+// AI suggestions (computed numbers → local AI → Suggestions card; advice only)
+// ---------------------------------------------------------------------------
+
+/** Card state for the page being rendered; writes new suggestions in the background when the numbers changed. */
+async function showInsights(scope, facts) {
+  state.insights = { scope, facts };
+  return loadInsights(scope, facts, localToday());
+}
+
+/** Redraw just the Suggestions card (after a background run, or Refresh). */
+async function refreshInsightsCard(opts) {
+  const current = state.insights;
+  if (!current) return;
+  const insights = await loadInsights(current.scope, current.facts, localToday(), opts);
+  if (state.insights !== current) return; // the user moved to another page meanwhile
+  replaceInsightsCard(appContainer, insights, () => refreshInsightsCard({ force: true }));
 }
 
 /** Export modal: detailed report of one batch, or the whole history. */

@@ -1,8 +1,8 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-28
-**Branch:** `main` (last feature merge `5b27fd0`, voice input; not pushed yet)
-**Tests:** 123 passing (`npm test`)
+**Branch:** `main` (last feature merge: AI suggestions; not pushed yet)
+**Tests:** 145 passing (`npm test`)
 
 ---
 
@@ -16,7 +16,7 @@ ChickPence is mainly a reporting system, so we are adding four features:
 | 2 | Logbook photo scanning with a **local LLM (Ollama)** + draft review modal | ✅ Done and tested end to end on this PC |
 | 3 | Voice input in the entry form | ✅ Done, merged (tested by typing; real speech not tested yet) |
 | 3b | Voice privacy decision (online Web Speech vs local Whisper) | ⏳ Open |
-| 4 | AI suggestions | ⏳ Planned (use the local LLM too) |
+| 4 | AI suggestions (local LLM) | ✅ Done, merged, tested in the app with Ollama on this PC |
 
 ### Architecture (updated: local LLM, no cloud AI)
 
@@ -190,11 +190,54 @@ Local branch `feature/voice-input` still exists (not pushed; already merged).
 
 ---
 
-## 5. Phase 4: AI suggestions
-- Use the local LLM (`localLlm.js`) instead of an Edge Function. Send **only computed metrics** (cost breakdown, FCR, mortality trend, margins, `calcDashboardAverages`). No buyer names.
-- Returns 3–5 suggestions, each tied to a specific number. They show in a "Suggestions" card on the Dashboard and Summary, labeled AI-generated. Cache them in Dexie (`ai_insights` table).
-- Generation is slow on CPU (minutes), so run it in the background and only when the metrics change.
-- The existing rule-based warning flags stay as they are. AI is advisory only.
+## 5. Done: Phase 4 AI suggestions
+
+### What the user sees
+- A **Suggestions** card (badge **AI-generated**) on the **Dashboard** (under Open Batch Warnings) and at the bottom of every **Batch Summary** page.
+- 3–5 suggestions, each with a short title, one or two sentences, and a **Based on:** line showing the number it is about (e.g. `Batch 2026-09: deaths in the last 7 days: 28`). That number comes from the app's own data, not from the model.
+- While new suggestions are written: a spinner and "Writing suggestions from the latest numbers…". The user can keep working; the card updates by itself when done (only the card is redrawn, not the page). Older suggestions stay visible, faded, marked "from older numbers".
+- **↻ Refresh** writes them again; **Try again** after a failure. Local AI off → the reason (e.g. Ollama not running) and the last suggestions, if any.
+- A footer line: written by the local AI on this computer from computed numbers only (no buyer names), advice only.
+
+### How it works
+1. `buildDashboardFacts` / `buildBatchFacts` (`insightsService.js`, pure) turn the records into a list of facts `{ id, label, value, text, note?, attention? }`, e.g. `open1.deaths_last_7_days | Batch 2026-09: deaths in the last 7 days | 28 | ATTENTION: up from 4 in the 7 days before`:
+   - per batch: age, chicks, birds alive, mortality rate, **deaths in the last 7 days vs the 7 days before** (open batches), cost to date. Closed batches add cost shares, feed used, revenue, net profit, margin, cost and price per kg, weight per bird and FCR. Open batches leave those out (a half-finished batch compared with finished ones misled the model); with sales so far they get price and weight per bird.
+   - farm averages of the **last 5 closed batches** (same rule as `calcDashboardAverages`), plus the last closed batch on the Dashboard. A Summary page compares the batch with the *other* closed batches.
+   - No buyer names, dates of single records or amounts of single records are sent.
+2. **The comparisons are rule-based, not left to the model** (same lesson as the logbook rules in Phase 2). Each fact can carry a note worked out in code: `higher/lower than the farm average (X): better/worse` (under 5% difference = "about the same"), the farmer's mortality limit (above, or within 80% of it for an open batch), and the weekly death trend (≥ 5 deaths and at least double the week before = rising). Worse ones are marked `attention` and listed first in the prompt.
+3. `factsHash` (FNV-1a over the shown values and notes, the model name and `PROMPT_VERSION`) decides whether the cached suggestions still match.
+4. If not, a background worker asks the text model once (`askTextModelJson` in `localLlm.js`, `think: false`, temperature 0.2). The JSON schema's `fact_id` is an **enum of the fact ids**, so every suggestion is tied to a real number. `suggestableFacts` narrows that enum to facts with a clear better/worse note when there are at least 2 (else any note, else all facts), and the model may write fewer than 5 rather than pad. `normalizeSuggestions` drops unknown ids, empty or duplicate titles and second suggestions about the same fact, clips long text and keeps at most 5. The **Based on** line shows the fact's own value and note; suggestions about a problem get a red edge.
+5. The result is stored in Dexie **v5** `ai_insights` (`scope` = `'dashboard'` or `'batch:<batch_id>'`, local only, not synced, cleared with the other records when another account logs in). A failure is stored too (not retried by itself, so a broken model does not loop); it keeps the last good suggestions.
+
+### Files
+| File | Role |
+|---|---|
+| `src/services/insightsService.js` | Facts, hash, prompt + schema, `normalizeSuggestions`, `generateSuggestions`, background queue (`loadInsights`, `onInsightsChange`), `insightsUnavailableReason` (only the text model is needed, not the OCR model) |
+| `src/services/localLlm.js` | `askTextModelJson` (generic JSON call), `hasModel` exported |
+| `src/ui/insightsCard.js` | `renderInsightsCard` (pure, escapes AI text), `attachInsightsCard`, `replaceInsightsCard` |
+| `src/ui/dashboardView.js`, `src/ui/summaryView.js` | Card placement (extra `insights` argument) |
+| `src/main.js` | `showInsights`, `refreshInsightsCard`; `state.insights` remembers which card is on screen |
+| `src/db/dexie.js`, `src/db/localData.js` | v5 `ai_insights`; cleared on account switch |
+| `src/style.css` | `.insights-*`, `.insight-*`, `.ai-badge` |
+| `tests/insights.test.js` | 22 tests: comparison notes, allowed facts, facts and averages, no buyer names in the prompt, hash, schema enum, normalization, model call with mocked `fetch`, cache/background/stale/failure, card rendering and escaping |
+
+### Prompt testing on this PC (qwen3.5:4b, CPU only)
+| Version | Time | Result |
+|---|---|---|
+| Plain facts, model compares | ~4 min | Missed deaths jumping 4 → 28; called 38.1% "lower" than 28.6%; compared feed per bird with FCR; filler about totals |
+| + rule-based notes, ATTENTION first | ~3.7 min | Led with the death spike, mortality limit and FCR, directions right; 2 of 5 were filler (birds alive, "harvest early" from age alone) |
+| + only clearly better/worse facts allowed (current) | ~4 min in the app | 4 suggestions, all correct and tied to the right number (Demo Mode data) |
+
+### Decisions and gotchas
+- Generation starts only when a page with the card is opened and its numbers changed, not on every saved record, so the CPU is not busy while the user is entering logs. One run at a time; if the numbers change during a run, the newest numbers run next (older queued requests are replaced).
+- Facts that depend on today (age, live birds, last-7-days deaths) change daily, so the Dashboard suggestions are rewritten about once a day when opened.
+- The rule-based mortality warnings are unchanged; the card is separate and advisory.
+- Ollama's default context is 4096 tokens here; a Dashboard with 2 open batches is ~50 facts (~1,500 tokens), so many more open batches could get close to the limit.
+- Suggestions and photo scans share the same Ollama; a scan started while suggestions are being written waits for them (and the other way round).
+
+### Still open
+- No switch to turn automatic suggestions off (e.g. on a slow PC). The ⚙ Local AI settings modal would be the place.
+- The model is small: wording is sometimes generic ("check feed quality"). The numbers and the better/worse direction come from code, so they are always right.
 
 ---
 

@@ -12,6 +12,7 @@ import { openThresholdModal } from './modals.js';
 import { Repository } from '../services/repository.js';
 import { showToast } from './toast.js';
 import { renderBatchToggleIcon } from './batchesView.js';
+import { renderInsightsCard } from './insightsCard.js';
 import {
   Chart,
   LineController,
@@ -72,7 +73,7 @@ export function getDashboardChartData(closedBatchesWithData = []) {
   return { enrichedClosed, last5, avgNetProfit, avgSellingPricePerKg, allClosedSorted };
 }
 
-export function renderDashboard(openBatchesData, closedBatchesWithData, collapsedBatchIds = new Set()) {
+export function renderDashboard(openBatchesData, closedBatchesWithData, collapsedBatchIds = new Set(), insights = null) {
   const { last5, avgNetProfit, avgSellingPricePerKg, allClosedSorted } =
     getDashboardChartData(closedBatchesWithData);
 
@@ -165,6 +166,8 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
         ${warningsHtml}
       </div>
     </div>
+
+    ${insights ? `<div class="dash-animate" style="--dash-delay:.03s;">${renderInsightsCard(insights)}</div>` : ''}
 
     <div class="dash-section-label" style="margin-top:4px;">Performance</div>
     <div class="card-box dash-chart-card dash-animate" style="--dash-delay:.05s;">
