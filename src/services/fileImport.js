@@ -309,8 +309,9 @@ export function tablesToEntries(tables, { today, batches = [], fileName = '' }) 
 
       const header = headerMap(row);
       if (header) { map = header; continue; }
+      // "Okt 27 Batch 2026-09 patay 4" in one cell names a type too, but it is an entry, not a section title
       const title = sectionTitle(row);
-      if (title) {
+      if (title && !(/\d/.test(source) && parseRecord(source, { today, batches, previousDate }))) {
         contextType = title;
         farmExpenses = FARM_EXPENSES.test(source);
         map = null;

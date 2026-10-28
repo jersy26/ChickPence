@@ -245,6 +245,16 @@ describe('files people make themselves', () => {
     ]);
   });
 
+  it('a one-cell logbook line with a type word is an entry, not a section title', () => {
+    const rows = parseCsv('Okt 27 Batch 2026-09 patay 4\ntatlong manok ang nawala sa batch 9 kahapon\nMortality\nDate,Deaths\n2026-10-28,2\n');
+    const result = tablesToEntries([{ name: '', rows }], { today, batches, fileName: 'test.csv' });
+    expect(result.entries.map(pick)).toEqual([
+      { type: 'mortality', date: '2026-10-27', batch: 'Batch 2026-09', count: 4 },
+      { type: 'mortality', date: '2026-10-28', count: 2 }
+    ]);
+    expect(result.unread).toEqual(['tatlong manok ang nawala sa batch 9 kahapon']);
+  });
+
   it('rows without a date are kept but flagged', () => {
     const { entries } = tablesToEntries([{ name: 'Feed', rows: [['Date', 'Kg'], ['', 50]] }], { today, batches });
     expect(entries[0]).toMatchObject({ type: 'feed', date: null, quantity_kg: 50, uncertain_fields: ['date'] });
