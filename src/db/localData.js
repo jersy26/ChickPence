@@ -13,8 +13,8 @@ import { checkAndSeedInitialData } from './seed.js';
 
 export const DEMO_OWNER = 'demo';
 
-/** Tables holding farm records (not the scan queue or app settings). */
-const RECORD_TABLES = ['batches', 'feed_logs', 'mortality_logs', 'sales', 'expenses', 'allocations', 'outbox'];
+/** Tables holding farm records, or suggestions written from them (not the scan queue or app settings). */
+const RECORD_TABLES = ['batches', 'feed_logs', 'mortality_logs', 'sales', 'expenses', 'allocations', 'outbox', 'ai_insights'];
 
 /**
  * What to do with the local records when `target` logs in (pure).

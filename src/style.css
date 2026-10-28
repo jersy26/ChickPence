@@ -344,6 +344,95 @@ h2 {
   font-size: 11px;
 }
 
+/* AI suggestions card (Dashboard, Summary) */
+.insights-card {
+  margin-bottom: 10px;
+}
+
+.insights-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.insights-head h2 {
+  margin: 0;
+}
+
+.ai-badge {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+  color: var(--acc);
+}
+
+.insights-refresh {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.insights-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.insights-status.is-warn {
+  color: var(--bad);
+}
+
+.insights-spinner {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
+  align-self: flex-start;
+  margin-top: 1px;
+}
+
+.insights-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.insight-item {
+  border: 1px solid var(--ln);
+  border-left: 3px solid var(--acc);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.insight-item.is-attention {
+  border-left-color: var(--bad);
+}
+
+.insight-title {
+  font-size: 14px;
+}
+
+.insight-detail {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.insight-basis {
+  font-size: 11px;
+  color: var(--mut);
+}
+
+.is-stale .insight-item {
+  opacity: 0.6;
+}
+
 .scan-progress {
   display: flex;
   align-items: center;

@@ -120,6 +120,13 @@ export class ChickPenceDatabase extends Dexie {
     this.version(4).stores({
       import_jobs: '++id, status, created_at'
     });
+
+    // v5 – ai_insights: AI suggestions cached per scope ('dashboard' or
+    //      'batch:<batch_id>') with a hash of the numbers they were written
+    //      from. Local only, never synced; rewritten when the numbers change.
+    this.version(5).stores({
+      ai_insights: 'scope'
+    });
   }
 }
 

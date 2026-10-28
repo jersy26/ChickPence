@@ -9,6 +9,7 @@ import {
 } from '../services/calculations.js';
 import { calcBatchMetrics } from '../services/allocationEngine.js';
 import { renderExportButton, attachExportButton } from './exportMenu.js';
+import { renderInsightsCard } from './insightsCard.js';
 
 const NA = 'N/A';
 
@@ -17,7 +18,7 @@ function metricVal(val, formatter = (v) => v) {
   return formatter(val);
 }
 
-export function renderSummary(batchData) {
+export function renderSummary(batchData, insights = null) {
   if (!batchData?.batch) {
     return `
       <div class="card-box" style="text-align: center; padding: 32px;">
@@ -170,6 +171,8 @@ export function renderSummary(batchData) {
         </div>
       </div>
     </div>
+
+    ${insights ? `<div style="margin-top: 12px;">${renderInsightsCard(insights)}</div>` : ''}
   `;
 }
 
