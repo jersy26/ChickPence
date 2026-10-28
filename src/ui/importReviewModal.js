@@ -1,6 +1,7 @@
 /**
  * importReviewModal.js
- * Review AI drafts (from a logbook photo) before anything is saved.
+ * Review drafts (from a logbook photo, or an imported Excel/CSV/PDF file)
+ * before anything is saved.
  * Every field stays editable; fields the AI was unsure about are highlighted.
  * Confirmed drafts go through Repository.save* — the same path as the manual form.
  */
@@ -62,7 +63,7 @@ function batchSelect(d, openBatches) {
     </select>`);
 }
 
-function renderDraftRow(d, openBatches, error) {
+function renderDraftRow(d, openBatches, error, fromFile) {
   const low = d.confidence < LOW_CONFIDENCE;
   return `
     <div class="import-row ${d.include ? '' : 'is-excluded'}" data-row="${d.key}">
@@ -71,7 +72,8 @@ function renderDraftRow(d, openBatches, error) {
           <input type="checkbox" data-key="${d.key}" data-field="include" ${d.include ? 'checked' : ''} />
           <b>${TYPE_LABELS[d.type]}</b>
         </label>
-        <span class="import-confidence ${low ? 'low' : ''}" title="AI confidence">${Math.round(d.confidence * 100)}%</span>
+        ${d.duplicate ? '<span class="badge-pill import-duplicate" title="A record with the same values is already in ChickPence">Already saved</span>' : ''}
+        ${fromFile ? '' : `<span class="import-confidence ${low ? 'low' : ''}" title="AI confidence">${Math.round(d.confidence * 100)}%</span>`}
       </div>
       ${d.source_text ? `<div class="text-mut import-source">“${escapeHtml(d.source_text)}”</div>` : ''}
       <div class="import-fields">
@@ -83,25 +85,34 @@ function renderDraftRow(d, openBatches, error) {
     </div>`;
 }
 
-/** Modal body (pure, testable without a DOM). errors: Map key → message */
-export function renderImportReviewModal(drafts, openBatches, notes = '', errors = new Map()) {
-  const uncertainCount = drafts.filter((d) => d.uncertain.size || d.confidence < LOW_CONFIDENCE).length;
+/**
+ * Modal body (pure, testable without a DOM). errors: Map key → message.
+ * fileName: set when the drafts come from an imported file instead of a photo.
+ */
+export function renderImportReviewModal(drafts, openBatches, notes = '', errors = new Map(), fileName = '') {
+  const fromFile = !!fileName;
+  const uncertainCount = drafts.filter((d) => d.uncertain.size || (!fromFile && d.confidence < LOW_CONFIDENCE)).length;
+  const duplicateCount = drafts.filter((d) => d.duplicate).length;
+  const count = `<b>${drafts.length}</b> ${drafts.length === 1 ? 'entry' : 'entries'}`;
   return `
     <div class="flex-row">
-      <h2>Review Scanned Entries</h2>
+      <h2>${fromFile ? 'Review Imported Entries' : 'Review Scanned Entries'}</h2>
       <button class="btn-icon" id="btn-close-modal" aria-label="Close">✕</button>
     </div>
     <div class="text-mut">
       ${drafts.length
-        ? `The AI found <b>${drafts.length}</b> ${drafts.length === 1 ? 'entry' : 'entries'}. Nothing is saved until you confirm.
-           ${uncertainCount ? `Check the <span class="import-flag">?</span> fields on ${uncertainCount} of them.` : ''}`
-        : 'The AI could not find any entries on this photo.'}
+        ? `${fromFile ? `Found ${count} in <b>${escapeHtml(fileName)}</b>.` : `The AI found ${count}.`} Nothing is saved until you confirm.
+           ${uncertainCount ? `Check the <span class="import-flag">?</span> fields on ${uncertainCount} of them.` : ''}
+           ${duplicateCount ? `${duplicateCount} ${duplicateCount === 1 ? 'is' : 'are'} already in ChickPence and left unticked.` : ''}`
+        : fromFile ? `No entries were found in <b>${escapeHtml(fileName)}</b>.` : 'The AI could not find any entries on this photo.'}
     </div>
-    ${notes ? `<div class="import-notes text-mut"><b>AI notes:</b> ${escapeHtml(notes)}</div>` : ''}
+    ${notes ? `<div class="import-notes text-mut"><b>${fromFile ? 'Notes' : 'AI notes'}:</b> ${escapeHtml(notes)}</div>` : ''}
     <div class="import-list">
-      ${drafts.map((d) => renderDraftRow(d, openBatches, errors.get(d.key))).join('')}
+      ${drafts.map((d) => renderDraftRow(d, openBatches, errors.get(d.key), fromFile)).join('')}
     </div>
-    <div class="text-mut import-disclaimer">AI-read values can be wrong. Compare them with the logbook before saving.</div>
+    <div class="text-mut import-disclaimer">${fromFile
+      ? 'Compare the values with the file before saving; rows without a batch or date need one.'
+      : 'AI-read values can be wrong. Compare them with the logbook before saving.'}</div>
     <div class="flex-row" style="margin-top: 4px;">
       <button class="btn-action" id="btn-cancel-import">${drafts.length ? 'Discard' : 'Close'}</button>
       ${drafts.length ? `<button class="btn-action primary" id="btn-confirm-import">Save selected</button>` : ''}
@@ -167,13 +178,13 @@ function readValue(el) {
  * @param {(savedCount: number) => void} onSaved – called after at least one entry was saved
  * @param {() => void} [onDiscard] – called when the user discards the remaining drafts
  */
-export function openImportReviewModal({ drafts, openBatches, notes = '', onSaved, onDiscard }) {
+export function openImportReviewModal({ drafts, openBatches, notes = '', fileName = '', onSaved, onDiscard }) {
   let current = drafts;
   let errors = new Map();
   let savedTotal = 0;
 
   const render = () => {
-    openModal(renderImportReviewModal(current, openBatches, notes, errors));
+    openModal(renderImportReviewModal(current, openBatches, notes, errors, fileName));
     const root = document.getElementById('modal');
     root.querySelector('.modal-card')?.classList.add('import-modal');
 
@@ -195,7 +206,7 @@ export function openImportReviewModal({ drafts, openBatches, notes = '', onSaved
     };
     root.querySelector('#btn-close-modal').addEventListener('click', finish);
     root.querySelector('#btn-cancel-import').addEventListener('click', () => {
-      if (current.some((d) => d.include) && !confirm('Discard these scanned entries?')) return;
+      if (current.some((d) => d.include) && !confirm(`Discard these ${fileName ? 'imported' : 'scanned'} entries?`)) return;
       finish();
     });
 

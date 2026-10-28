@@ -18,6 +18,7 @@ import { openImportReviewModal, openScanProgressModal } from './ui/importReviewM
 import { openLocalAiModal } from './ui/localAiModal.js';
 import { attachInsightsCard, replaceInsightsCard } from './ui/insightsCard.js';
 import { isVoiceModelCached } from './services/speechInput.js';
+import { fileKind, readLogFile, markDuplicates, importNotes } from './services/fileImport.js';
 import { buildDashboardFacts, buildBatchFacts, loadInsights, onInsightsChange } from './services/insightsService.js';
 import {
   localToday,
@@ -251,6 +252,7 @@ async function render() {
           render();
         },
         onScanPhoto: (file) => scanLogbookPhoto(file, openBatchesData.map((d) => d.batch)),
+        onImportFile: (file) => importLogFile(file, openBatchesData.map((d) => d.batch)),
         onReviewScans: () => reviewNextScan(openBatchesData.map((d) => d.batch)),
         onAiSettings: () => openLocalAiModal(render),
         onVoiceResult: (text) => fillFormFromVoice(text, openBatchesData.map((d) => d.batch))
@@ -415,6 +417,51 @@ async function reviewNextScan(openBatches) {
   openReview(job.result, openBatches, {
     onSaved: () => deleteJob(job.id),
     onDiscard: () => deleteJob(job.id)
+  });
+}
+
+// ---------------------------------------------------------------------------
+// File import (Excel / CSV / PDF → drafts → review modal → Repository.save*)
+// ---------------------------------------------------------------------------
+
+async function importLogFile(file, openBatches) {
+  const kind = fileKind(file);
+  if (kind === 'image') return scanLogbookPhoto(file, openBatches);
+  if (kind === 'old-spreadsheet') return showToast('Save the spreadsheet as Excel Workbook (.xlsx) or CSV first, then import it.', 5000);
+  if (kind === 'unknown') return showToast('ChickPence can import Excel (.xlsx), CSV and PDF files, and photos.', 4000);
+
+  showToast(`Reading ${file.name}…`);
+  let result;
+  try {
+    result = await readLogFile(file, { today: localToday(), batches: openBatches.map((b) => b.batch_name) });
+  } catch (err) {
+    console.error('Import failed', err);
+    return showToast(`Could not read ${file.name}: ${err.message}`, 5000);
+  }
+
+  // A scanned PDF has no text: its pages go to the logbook scan like photos
+  if (result.pageImages) {
+    for (const blob of result.pageImages) await queueImageJob(await resizeImage(blob));
+    const n = result.pageImages.length;
+    const pages = n === 1
+      ? 'its page is being read like a logbook photo. It appears'
+      : `${result.pageCount > n ? `the first ${n} of its ${result.pageCount} pages are` : `its ${n} pages are`} being read like logbook photos. They appear`;
+    showToast(`This PDF is a scan, so ${pages} under "Review scanned" when ready.`, 6000);
+    processQueue();
+    return render();
+  }
+
+  const [expenses, feed, mortality, sales] = await Promise.all([
+    db.expenses.toArray(), db.feed_logs.toArray(), db.mortality_logs.toArray(), db.sales.toArray()
+  ]);
+  const drafts = markDuplicates(normalizeDrafts(result.entries, openBatches), { expenses, feed, mortality, sales });
+  openImportReviewModal({
+    drafts,
+    openBatches,
+    notes: importNotes(result),
+    fileName: file.name,
+    onSaved: () => render(),
+    onDiscard: () => render()
   });
 }
 
