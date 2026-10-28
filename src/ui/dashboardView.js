@@ -169,10 +169,8 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
       </div>
     </div>
 
-    ${insights ? `<div class="dash-animate" style="--dash-delay:.03s;">${renderInsightsCard(insights)}</div>` : ''}
-
     <div class="dash-section-label" style="margin-top:4px;">Performance</div>
-    <div class="card-box dash-chart-card dash-animate" style="--dash-delay:.05s;">
+    <div class="card-box dash-chart-card dash-animate" style="--dash-delay:.03s;">
       <div class="dash-chart-head">
         <h2>Net Profit Trend</h2>
         <span class="text-mut">All closed batches over time</span>
@@ -189,6 +187,8 @@ export function renderDashboard(openBatchesData, closedBatchesWithData, collapse
         </div>
       </div>
     </div>
+
+    ${insights ? `<div class="dash-animate" style="--dash-delay:.05s;">${renderInsightsCard(insights)}</div>` : ''}
 
     <div class="flex-row" style="margin:4px 0 6px;align-items:center;">
       <div class="dash-section-label">Open Batches</div>
