@@ -1,6 +1,6 @@
 /**
  * fileImport.js
- * Turn an Excel (.xlsx), CSV or PDF file into draft log entries for the
+ * Turn an Excel (.xlsx, .xls), OpenDocument (.ods), CSV or PDF file into draft log entries for the
  * review modal. Photos (and scanned PDFs, page by page) go through the
  * logbook scan instead (aiParseService.js).
  *
@@ -17,10 +17,12 @@
 
 import { parseRecord, parseDate } from './logbookParser.js';
 
-export const IMPORT_ACCEPT = '.xlsx,.csv,.pdf,image/*';
+export const IMPORT_ACCEPT = '.xlsx,.xls,.ods,.csv,.pdf,image/*';
 const MAX_ROWS = 1000;
 
-/** 'image' | 'csv' | 'xlsx' | 'pdf' | 'old-spreadsheet' | 'unknown' */
+/**
+ * 'image' | 'csv' | 'xlsx' | 'pdf' | 'spreadsheet' (.xls, .ods) | 'old-spreadsheet' (.numbers) | 'unknown'
+ */
 export function fileKind(file) {
   const name = String(file?.name || '').toLowerCase();
   const type = String(file?.type || '');
@@ -28,7 +30,8 @@ export function fileKind(file) {
   if (name.endsWith('.csv') || type === 'text/csv') return 'csv';
   if (name.endsWith('.xlsx') || type.includes('spreadsheetml')) return 'xlsx';
   if (name.endsWith('.pdf') || type === 'application/pdf') return 'pdf';
-  if (/\.(xls|ods|numbers)$/.test(name)) return 'old-spreadsheet';
+  if (/\.(xls|ods)$/.test(name) || type === 'application/vnd.ms-excel' || type.includes('opendocument.spreadsheet')) return 'spreadsheet';
+  if (name.endsWith('.numbers')) return 'old-spreadsheet';
   return 'unknown';
 }
 
@@ -459,7 +462,35 @@ async function pdfPagesAsImages(doc) {
 }
 
 /**
- * Read an .xlsx, .csv or .pdf file.
+ * A SheetJS workbook (.xls, .ods) → tables like read-excel-file gives: one per
+ * sheet, date cells as UTC-midnight Dates, everything else as its raw value.
+ */
+export function sheetJsTables(XLSX, workbook) {
+  return workbook.SheetNames.map((name) => {
+    const ws = workbook.Sheets[name];
+    const rows = [];
+    if (ws?.['!ref']) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let r = range.s.r; r <= Math.min(range.e.r, range.s.r + MAX_ROWS); r++) {
+        const row = [];
+        for (let c = range.s.c; c <= range.e.c; c++) row.push(sheetJsValue(XLSX, ws[XLSX.utils.encode_cell({ r, c })]));
+        rows.push(row);
+      }
+    }
+    return { name, rows };
+  });
+}
+
+function sheetJsValue(XLSX, cell) {
+  if (!cell || cell.t === 'z' || cell.t === 'e') return null;
+  if (cell.t === 'n' && cell.z && XLSX.SSF.is_date(cell.z)) {
+    return new Date(Date.UTC(1899, 11, 30) + Math.round(cell.v * 86400000)); // date serial, time of day dropped by isoUtc
+  }
+  return cell.v ?? null;
+}
+
+/**
+ * Read an .xlsx, .xls, .ods, .csv or .pdf file.
  * Returns { entries, unread, skipped } or, for a scanned PDF, { pageImages: Blob[], pageCount }.
  */
 export async function readLogFile(file, { today, batches = [] }) {
@@ -471,6 +502,10 @@ export async function readLogFile(file, { today, batches = [] }) {
     const { default: readExcelFile } = await import('read-excel-file/universal');
     const sheets = await readExcelFile(file);
     tables = sheets.map((s) => ({ name: s.sheet, rows: s.data }));
+  } else if (kind === 'spreadsheet') {
+    // SheetJS is only loaded for the older formats read-excel-file cannot read
+    const XLSX = await import('xlsx');
+    tables = sheetJsTables(XLSX, XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', dense: false }));
   } else if (kind === 'pdf') {
     const pdfjs = await loadPdfjs();
     const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
@@ -480,7 +515,7 @@ export async function readLogFile(file, { today, batches = [] }) {
     }
     tables = [{ name: '', rows }];
   } else {
-    throw new Error('Choose an Excel (.xlsx), CSV or PDF file, or a photo.');
+    throw new Error('Choose an Excel (.xlsx, .xls), OpenDocument (.ods), CSV or PDF file, or a photo.');
   }
   return tablesToEntries(tables, { today, batches, fileName: file.name });
 }

@@ -13,8 +13,10 @@ import {
   importNotes,
   markDuplicates,
   textItemsToRows,
-  pdfRows
+  pdfRows,
+  sheetJsTables
 } from '../src/services/fileImport.js';
+import * as XLSX from 'xlsx';
 import { normalizeDrafts } from '../src/services/aiParseService.js';
 import { buildBatchReport, buildBatchLedger, buildXlsxSheets, tableToCsv, renderReportBlob } from '../src/services/exportService.js';
 import { renderImportReviewModal } from '../src/ui/importReviewModal.js';
@@ -56,7 +58,9 @@ describe('file kinds and cells', () => {
     expect(fileKind({ name: 'logs.csv' })).toBe('csv');
     expect(fileKind({ name: 'report.pdf' })).toBe('pdf');
     expect(fileKind({ name: 'IMG_1.jpg', type: 'image/jpeg' })).toBe('image');
-    expect(fileKind({ name: 'old.xls' })).toBe('old-spreadsheet');
+    expect(fileKind({ name: 'old.xls' })).toBe('spreadsheet');
+    expect(fileKind({ name: 'libre.ods' })).toBe('spreadsheet');
+    expect(fileKind({ name: 'mac.numbers' })).toBe('old-spreadsheet');
     expect(fileKind({ name: 'notes.docx' })).toBe('unknown');
   });
 
@@ -177,6 +181,25 @@ describe('files people make themselves', () => {
     ]);
     expect(result.unread).toEqual(['random note about the weather']);
     expect(importNotes(result)).toContain('1 line was not recognised: "random note about the weather"');
+  });
+
+  it.each(['xls', 'biff5', 'ods'])('an old Excel or OpenDocument file (%s) with real date cells', (bookType) => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Petsa', 'Batch', 'Patay'],
+      [new Date(Date.UTC(2026, 9, 26)), 'Batch 2026-09', 4],
+      [new Date(Date.UTC(2026, 9, 27)), 'Batch 2026-07', 2]
+    ], { cellDates: true, UTC: true });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Mortality');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Total deaths', 6]]), 'Summary');
+    const data = XLSX.write(wb, { bookType, type: 'array' });
+
+    const tables = sheetJsTables(XLSX, XLSX.read(new Uint8Array(data), { type: 'array' }));
+    const result = tablesToEntries(tables, { today, batches, fileName: `log.${bookType}` });
+    expect(result.entries.map(pick)).toEqual([
+      { type: 'mortality', date: '2026-10-26', batch: 'Batch 2026-09', count: 4 },
+      { type: 'mortality', date: '2026-10-27', batch: 'Batch 2026-07', count: 2 }
+    ]);
   });
 
   it('rows without a date are kept but flagged', () => {

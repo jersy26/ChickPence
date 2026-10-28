@@ -434,8 +434,8 @@ async function reviewNextScan(openBatches) {
 async function importLogFile(file, openBatches) {
   const kind = fileKind(file);
   if (kind === 'image') return scanLogbookPhoto(file, openBatches);
-  if (kind === 'old-spreadsheet') return showToast('Save the spreadsheet as Excel Workbook (.xlsx) or CSV first, then import it.', 5000);
-  if (kind === 'unknown') return showToast('ChickPence can import Excel (.xlsx), CSV and PDF files, and photos.', 4000);
+  if (kind === 'old-spreadsheet') return showToast('Export the spreadsheet as Excel (.xlsx) or CSV first, then import it.', 5000);
+  if (kind === 'unknown') return showToast('ChickPence can import Excel (.xlsx, .xls), OpenDocument (.ods), CSV and PDF files, and photos.', 4000);
 
   showToast(`Reading ${file.name}…`);
   let result;
