@@ -104,9 +104,9 @@ describe('CSV', () => {
 });
 
 describe('formatForText (PDF)', () => {
-  it('writes currency as PHP since jsPDF fonts lack the peso sign', () => {
-    expect(formatForText(1234.5, 'peso')).toBe('PHP 1,234.50');
-    expect(formatForText(-1568000, 'peso')).toBe('-PHP 1,568,000.00');
+  it('writes currency with the peso sign (the PDF embeds Noto Sans)', () => {
+    expect(formatForText(1234.5, 'peso')).toBe('₱1,234.50');
+    expect(formatForText(-1568000, 'peso')).toBe('-₱1,568,000.00');
     expect(formatForText(12.345, 'pct')).toBe('12.35%');
     expect(formatForText('N/A', 'peso')).toBe('N/A');
     expect(formatForText(null, 'peso')).toBe('—');
