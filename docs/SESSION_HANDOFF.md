@@ -1,7 +1,7 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-28
-**Branch:** `feature/voice-input` (Phase 3, not merged yet; `main` last feature merge `1de555b`)
+**Branch:** `main` (last feature merge `5b27fd0`, voice input; not pushed yet)
 **Tests:** 123 passing (`npm test`)
 
 ---
@@ -14,7 +14,7 @@ ChickPence is mainly a reporting system, so we are adding four features:
 |---|---|---|
 | 1 | Export reports (Excel, PDF, CSV) | ✅ Done, merged, pushed |
 | 2 | Logbook photo scanning with a **local LLM (Ollama)** + draft review modal | ✅ Done and tested end to end on this PC |
-| 3 | Voice input in the entry form | ✅ Done on `feature/voice-input` (tested by typing; real speech not tested yet) |
+| 3 | Voice input in the entry form | ✅ Done, merged (tested by typing; real speech not tested yet) |
 | 3b | Voice privacy decision (online Web Speech vs local Whisper) | ⏳ Open |
 | 4 | AI suggestions | ⏳ Planned (use the local LLM too) |
 
@@ -146,7 +146,7 @@ Local branches `feature/ai-parse` and `feature/local-llm` still exist (not pushe
 
 ---
 
-## 4. Done: Phase 3 voice input (branch `feature/voice-input`)
+## 4. Done: Phase 3 voice input
 
 ### What the user sees
 - In the **+ Add New Log** modal (new entries only, not when editing): **🎤 Speak**, a language picker (Filipino / English (PH), remembered in localStorage `chickpence_voice_lang`), and a text box with the transcript plus **Fill form**.
@@ -179,6 +179,14 @@ Local branches `feature/ai-parse` and `feature/local-llm` still exist (not pushe
 ### Still open
 - **Privacy:** Chrome/Edge Web Speech sends audio to Google/Microsoft, unlike the local-only photo scanning. It is stated in the app; it still needs a line in the PRD privacy section, or a switch to a local speech model (e.g. Whisper on a local server; `startDictation` is the only part to replace).
 - Web Speech needs internet. Offline, the mic is disabled but typing a sentence still works.
+- **Phones:** browsers only allow the microphone on `https` pages or `localhost`, but reaching Ollama from a phone needs the app on plain `http` (section 3). Using both from a phone needs an `https` proxy in front of Ollama.
+
+### Commits (on `main`)
+```
+5b27fd0 Merge branch 'feature/voice-input' into main
+226efa9 feat(voice): fill the entry form from a spoken sentence
+```
+Local branch `feature/voice-input` still exists (not pushed; already merged).
 
 ---
 
