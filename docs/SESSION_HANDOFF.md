@@ -1,24 +1,29 @@
 # ChickPence — Session Handoff
 
-**Date:** 2026-10-29 (second session)
-**Branch:** `main` (last merge: `fix/todo-items`), pushed to GitHub.
-**Tests:** 189 passing (`npm test`); the production build passes.
+**Date:** 2026-10-29 (third session: architecture and security review, section 10)
+**Branch:** `fix/review-findings` (section 10 fixes and the Suggestions card moved below the profit chart), committed; not merged into `main` or pushed.
+**Tests:** 222 passing (`npm test`); the production build passes.
 
-> **Next session: start with section 0 (To do).** The code to-do list is finished (section 9).
+> **Next session: start with section 0 (To do).** Section 10 lists what the review fixed and what it left open.
 
 ---
 
 ## 0. To do
 
 ### Not finished (code work)
-- Nothing left from the previous list; see section 9 for what was done.
+- **Server keeps the newest edit (sync).** The database accepts any upsert, so a device that was offline can upload an older edit over a newer one; devices then disagree for good (each keeps its own newer copy). Needs a migration: a `BEFORE UPDATE` trigger on each table that skips the update when `NEW.updated_at < OLD.updated_at` (`RETURN NULL`). Test it on local Supabase before adding it (section 10).
+- **Row-level security is one shared farm.** Every signed-in user can read and change every row, and `expense` has no owner column. Fine for one farm with accounts made in Studio (sign-ups are now off); if one Supabase project ever serves several farms, it needs an owner (or farm) column on every table and policies on it.
 - Optional: try `npm run dev:lan` from a real phone (only checked with curl on this PC: https page, `/ollama` through the proxy, COOP/COEP headers).
 
 ### Needs the user (cannot be done from here)
+- **Restart local Supabase** (`npx supabase stop`, then start) so `enable_signup = false` in `supabase/config.toml` takes effect. Users are still added in Studio.
 - **Speak into a real microphone** in Chrome or Edge on the farm PC, in Filipino and Taglish, ideally in the shed. All voice tests used text-to-speech recordings.
 - **Hosting:** whatever serves the built app must send `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: credentialless`, or Whisper runs about 5× slower. For phones it must also pass `/ollama` on to Ollama on the farm PC (as `vite.config.js` does), or the Ollama address must be set by hand.
 
 ### Known limits (no fix planned)
+- Sync compares `updated_at` from each device's clock: a device with a wrong clock wins or loses every edit. Every sync downloads all rows (paged); fine at farm scale, a server-side change cursor would be needed for much more data.
+- The Batches and Dashboard pages wait for the Ollama check: ~0.4 s when it runs, ~2.3 s when it does not (Windows takes that long to refuse a closed localhost port; measured with curl). Cached for 15 s.
+- A bulk import saves row by row, and each death or sale recomputes all cost sharing; slow for hundreds of rows.
 - AI suggestion wording is sometimes generic (small model); the numbers and the better/worse direction come from code.
 - Whisper sometimes drops part of a buyer's name ("aling" for "Aling Nena"); the review form catches it.
 - `npm audit` still lists 4 low advisories (`deepmerge` via `vite-plugin-pwa` → `workbox-build`); the only offered fix is `--force`, which downgrades the PWA plugin to 0.2.1.
@@ -405,3 +410,32 @@ Branch `fix/todo-items`, merged into `main` and pushed. Tests: 189.
 | `af5ea67` | **Phones and Ollama.** `vite.config.js`: `server.proxy` and `preview.proxy` pass `/ollama` to `http://localhost:11434` (or `OLLAMA_PROXY_TARGET`), dropping the `Origin` header (Ollama answers 403 to a LAN origin otherwise). `defaultOllamaUrl()`: `http://localhost:11434` on the farm PC, `/ollama` when the app is opened from another device; ⚙ explains it. `npm run dev:lan` / `preview:lan` (`--host --mode lan`) add `@vitejs/plugin-basic-ssl` (self-signed https) so phones allow the microphone. COOP/COEP headers unchanged. Checked with curl: LAN origin direct to Ollama 403, via `/ollama` 200, `dev:lan` https page 200 with both headers, `/ollama` over https 200. Not tried from a real phone. |
 | `1de5c32` | **`npm audit fix`** (no `--force`): vite 6.4.3 → 6.4.5 and other dev-tool fixes; 10 advisories → 4 low (section 0). Tests and build pass. |
 | `34ba117` | **Bundle split.** Chart.js is loaded by `loadChart()` when the Dashboard draws its chart (own 153 KB chunk, precached), with a guard for a redraw during loading; `manualChunks` puts Supabase (227 KB) and Dexie (97 KB) in their own chunks. Main chunk 654 KB → **176 KB**. `chunkSizeWarningLimit: 600` because the two remaining big chunks are lazy (Whisper worker 549 KB, SheetJS 488 KB). Chart checked in the production build. |
+
+---
+
+## 10. Done: architecture and security review (2026-10-29, third session, branch `fix/review-findings`)
+
+Each bug was reproduced in the app (Demo Mode, port 3002) or traced in the code, fixed, and checked again; the new tests fail on the old code. Tests: 222.
+
+| Problem | Fix |
+|---|---|
+| **Stored XSS.** Batch and buyer names went into `innerHTML` unescaped on the Dashboard, Open Batches, History, Summary, Export and the threshold / close dialogs. A batch named `<img src=x onerror=…>` ran its script 3 times. Names come from imports, the local AI and **sync from any signed-in user**, and the Supabase login (refresh token) is in localStorage | `src/ui/html.js` `escapeHtml` (moved from the review modal, which re-exports it) on every name, search text and form value |
+| **Anyone could sign up** (`enable_signup = true`, no email confirmation) and, with the shared-farm row-level security, read and change all records; the anon key is in the app | `supabase/config.toml`: sign-ups off; README: turn them off on a hosted project |
+| **Dates a day early before 8 AM.** Forms filled in `toISOString()` (the UTC date), fixed when the page loaded: at 03:36 on Oct 29 they said Oct 28. Closing a batch used it too | `localToday()` (now in `calculations.js`) read at each render; `closeBatch` default |
+| **Preview Allocation cleared the form.** After the preview the form came back with today's date and empty amounts while Save was on, so the expense was saved on another date than the preview, or edits were lost | The preview keeps the values it was made for (`{ rows, values }`); changing a value turns Save off until the next preview |
+| **Pages drawn out of order.** `render()` awaits the database and the Ollama check; an older render finishing last drew its page under the new page's nav (History shown with Dashboard highlighted, and it stayed) | `renderSeq`: only the latest render draws |
+| **Background redraws cleared the entry form** (sync finished, scanned photo ready) | `refreshFromBackground()` skips while the entry form is open; closing it redraws |
+| **History search lost focus** on every keystroke | The redrawn box takes focus and caret back |
+| **Deleted expenses kept costing.** A full recompute skipped deleted expenses but never removed their allocation rows: an expense deleted on another device, or discarded from the Sync screen, stayed in its batches' costs | `recomputeAllocations` rebuilds the (derived) table: full = clear and recompute; for given ids, their rows are removed first |
+| A new batch did not take its share of existing expenses until some later death or sale | `createBatch` recomputes |
+| **Download stopped at 1,000 rows per table** (PostgREST `max_rows`): a new device got part of the records, silently | `fetchAllRows`: pages keyed on the primary key, `count: 'exact'` to stop |
+| **Changes saved during a sync waited** for the next change or reconnect (`syncNow` returned while syncing) | A call during a sync joins it and the sync runs once more; `syncNow()` resolves when all is done |
+| A record and its queued upload were separate writes; closing the tab in between left a change that never uploaded | `writeUpsert` / `writeSoftDelete` inside one transaction with the record and the cost-sharing recompute (`saveAndQueue` in `repository.js`) |
+| **Demo Mode could delete an account's unsent changes.** After logging out with uploads waiting, Demo Mode opened that account's records and its simulated sync emptied the queue; with no Supabase settings, any sync did | `planLocalData` → `'blocked'` (Demo Mode refused with a message naming the account); the simulated sync only empties the demo's own queue; no settings → queue kept. What Demo Mode left is cleared for an account |
+| **`/ollama` passed on all of Ollama's API:** with `dev:lan` / `preview:lan`, anyone on the Wi-Fi could pull, delete or create models through the app's server | `vite.config.js` proxy `bypass`: only `/api/tags` and `/api/chat` (others → 404; checked with curl) |
+| **Logout offline did not stick:** with an expired login, supabase-js gives up without removing it, and the next start opened the account again. Logout also ended the login on every other device (`global` scope) | `signOut({ scope: 'local' })`, and the saved login is removed when sign-out fails |
+| Every sync rewrote every downloaded row and recomputed all cost sharing | `replacesLocal`: newer wins; at the same time only a row the server changed (rounded) |
+| Reads scanned whole tables once per batch per render | `where('batch_id')` index; batches loaded in parallel |
+| `activeBatchView.js` (643 lines) was not used | Deleted |
+
+Tests pinned to `Asia/Manila` (`vitest.config.js`) so the date tests catch the UTC bug on any machine. The PDF round-trip test got a 20 s timeout (it took over 5 s with all test files running on this PC).
