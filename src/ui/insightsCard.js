@@ -39,6 +39,10 @@ function statusLine(insights) {
       return `<div class="insights-status is-warn">Could not write suggestions: ${escapeHtml(insights.error)}${insights.suggestions.length ? ' The suggestions below are from an earlier try.' : ''}</div>`;
     case 'empty':
       return `<div class="insights-status text-mut">Add records to a batch to get suggestions.</div>`;
+    case 'paused':
+      return `<div class="insights-status text-mut">${insights.suggestions.length
+        ? 'The numbers changed since these suggestions were written. Tap Write suggestions to update them.'
+        : 'Tap Write suggestions to have the local AI look at these numbers (a few minutes).'}</div>`;
     default:
       return '';
   }
@@ -47,7 +51,8 @@ function statusLine(insights) {
 /** @param {object|null} insights – result of loadInsights; null hides the card */
 export function renderInsightsCard(insights) {
   if (!insights) return '';
-  const canRefresh = insights.status === 'ready' || insights.status === 'failed';
+  const canRefresh = ['ready', 'failed', 'paused'].includes(insights.status);
+  const refreshLabel = { failed: 'Try again', paused: 'Write suggestions' }[insights.status] || '↻ Refresh';
   const updated = insights.createdAt && insights.suggestions.length
     ? ` · Updated ${escapeHtml(formatWhen(insights.createdAt))}`
     : '';
@@ -57,7 +62,7 @@ export function renderInsightsCard(insights) {
       <div class="insights-head">
         <h2>Suggestions</h2>
         <span class="badge-pill ai-badge">AI-generated</span>
-        ${canRefresh ? `<button type="button" class="btn-link insights-refresh" id="btn-insights-refresh">${insights.status === 'failed' ? 'Try again' : '↻ Refresh'}</button>` : ''}
+        ${canRefresh ? `<button type="button" class="btn-link insights-refresh" id="btn-insights-refresh">${refreshLabel}</button>` : ''}
       </div>
       ${statusLine(insights)}
       ${insights.suggestions.length ? `<div class="${insights.stale ? 'is-stale' : ''}">${renderList(insights.suggestions)}</div>` : ''}

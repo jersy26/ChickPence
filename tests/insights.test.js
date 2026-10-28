@@ -23,6 +23,8 @@ const {
   buildInsightsPrompt,
   normalizeSuggestions,
   generateSuggestions,
+  getSuggestionsMode,
+  setSuggestionsMode,
   loadInsights,
   onInsightsChange
 } = await import('../src/services/insightsService.js');
@@ -300,6 +302,28 @@ describe('loadInsights (background + cache)', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('manual mode never starts the model by itself, but Write suggestions does', async () => {
+    const calls = mockOllama({ answer: goodAnswer });
+    const facts = buildBatchFacts(closedB, [closedA, closedB], today);
+    const paused = await loadInsights('batch:b', facts, today, { mode: 'manual' });
+    expect(paused).toMatchObject({ status: 'paused', suggestions: [] });
+    expect(calls).toHaveLength(0);
+
+    const done = finished('batch:b');
+    expect((await loadInsights('batch:b', facts, today, { mode: 'manual', force: true })).status).toBe('working');
+    await done;
+    expect(calls).toHaveLength(1);
+    // Up to date: shown as ready, still without calling the model again
+    expect((await loadInsights('batch:b', facts, today, { mode: 'manual' })).status).toBe('ready');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('remembers the mode', () => {
+    expect(getSuggestionsMode()).toBe('auto');
+    setSuggestionsMode('nonsense');
+    expect(getSuggestionsMode()).toBe('auto');
+  });
+
   it('empty when there are no numbers yet', async () => {
     expect(await loadInsights('dashboard', [], today)).toEqual({ status: 'empty', suggestions: [] });
   });
@@ -330,6 +354,10 @@ describe('renderInsightsCard', () => {
     expect(renderInsightsCard({ status: 'off', reason: 'Local AI (Ollama) is not running.', suggestions: [] })).toContain('not running');
     expect(renderInsightsCard({ status: 'failed', error: 'boom', suggestions: [] })).toContain('Try again');
     expect(renderInsightsCard({ status: 'empty', suggestions: [] })).toContain('Add records');
+    const paused = renderInsightsCard({ status: 'paused', suggestions: [] });
+    expect(paused).toContain('Write suggestions');
+    expect(paused).toContain('btn-insights-refresh');
+    expect(renderInsightsCard({ status: 'paused', suggestions: [suggestion], stale: true })).toContain('The numbers changed since');
     expect(renderInsightsCard(null)).toBe('');
   });
 });

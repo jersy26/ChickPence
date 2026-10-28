@@ -173,5 +173,7 @@ describe('prompts and settings modal', () => {
     const html = renderLocalAiModal(s, null, 'onnx-community/whisper-base');
     expect(html).toMatch(/<option value="onnx-community\/whisper-base" selected>/);
     expect(html).toContain('never leaves the device');
+    expect(renderLocalAiModal(s, null, undefined, 'manual')).toMatch(/<option value="manual" selected>/);
+    expect(renderLocalAiModal(s)).toMatch(/<option value="auto" selected>/);
   });
 });

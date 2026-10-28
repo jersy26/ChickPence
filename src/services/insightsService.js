@@ -433,7 +433,35 @@ const lastReady = (rec) => (rec?.status === 'ready' ? rec : rec?.last_ready || n
  * Returns { status: 'empty'|'off'|'working'|'ready'|'failed', suggestions,
  *           createdAt, stale, reason, error, startedAt }.
  */
-export async function loadInsights(scope, facts, today, { force = false } = {}) {
+// ---------------------------------------------------------------------------
+// SETTING: when suggestions are written
+// ---------------------------------------------------------------------------
+
+const MODE_KEY = 'chickpence_ai_suggestions';
+
+/** 'auto' (when the numbers change), 'manual' (only on "Write suggestions") or 'off' (card hidden). */
+export const SUGGESTION_MODES = [
+  { id: 'auto', label: 'Write them automatically when the numbers change' },
+  { id: 'manual', label: 'Only when I tap "Write suggestions" (for a slow computer)' },
+  { id: 'off', label: 'Off: hide the Suggestions card' }
+];
+
+export function getSuggestionsMode() {
+  try {
+    const saved = localStorage.getItem(MODE_KEY);
+    if (SUGGESTION_MODES.some((m) => m.id === saved)) return saved;
+  } catch (_) {}
+  return 'auto';
+}
+
+export function setSuggestionsMode(mode) {
+  try {
+    if (mode && mode !== 'auto') localStorage.setItem(MODE_KEY, mode);
+    else localStorage.removeItem(MODE_KEY);
+  } catch (_) {}
+}
+
+export async function loadInsights(scope, facts, today, { force = false, mode = getSuggestionsMode() } = {}) {
   if (!facts.length) return { status: 'empty', suggestions: [] };
 
   const hash = factsHash(facts, getLlmSettings().textModel);
@@ -452,6 +480,9 @@ export async function loadInsights(scope, facts, today, { force = false } = {}) 
   if (!force && cached?.hash === hash) {
     return cached.status === 'ready' ? shown({ status: 'ready' }) : shown({ status: 'failed', error: cached.error });
   }
+
+  // Manual mode: never start the (slow) model by itself
+  if (!force && mode === 'manual') return shown({ status: 'paused' });
 
   const reason = await insightsUnavailableReason();
   if (reason) return shown({ status: 'off', reason });

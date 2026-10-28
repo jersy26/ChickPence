@@ -19,7 +19,7 @@ import { openLocalAiModal } from './ui/localAiModal.js';
 import { attachInsightsCard, replaceInsightsCard } from './ui/insightsCard.js';
 import { isVoiceModelCached } from './services/speechInput.js';
 import { fileKind, readLogFile, markDuplicates, importNotes } from './services/fileImport.js';
-import { buildDashboardFacts, buildBatchFacts, loadInsights, onInsightsChange } from './services/insightsService.js';
+import { buildDashboardFacts, buildBatchFacts, loadInsights, onInsightsChange, getSuggestionsMode } from './services/insightsService.js';
 import {
   localToday,
   aiUnavailableReason,
@@ -304,6 +304,7 @@ async function render() {
 
 /** Card state for the page being rendered; writes new suggestions in the background when the numbers changed. */
 async function showInsights(scope, facts) {
+  if (getSuggestionsMode() === 'off') return null; // the card is hidden (⚙ Local AI settings)
   state.insights = { scope, facts };
   return loadInsights(scope, facts, localToday());
 }
