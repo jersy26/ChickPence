@@ -1,7 +1,7 @@
 # ChickPence — Session Handoff
 
 **Date:** 2026-10-29 (third session: architecture and security review, section 10)
-**Branch:** `fix/review-findings` (section 10 fixes and the Suggestions card moved below the profit chart), committed; not merged into `main` or pushed.
+**Branch:** `main` (last merge: `fix/review-findings`: section 10 fixes and the Suggestions card below the profit chart), not pushed.
 **Tests:** 222 passing (`npm test`); the production build passes.
 
 > **Next session: start with section 0 (To do).** Section 10 lists what the review fixed and what it left open.
