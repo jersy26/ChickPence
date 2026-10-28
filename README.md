@@ -10,13 +10,13 @@ An offline-first web app (PWA) for broiler farms: record expenses, feed, mortali
 ## Contents
 
 1. [Features](#-features)
-2. [Dependencies at a glance](#-dependencies-at-a-glance)
-3. [Quick start (app only)](#-quick-start-app-only)
+2. [Dependencies](#-dependencies)
+3. [How to run the app](#-how-to-run-the-app)
 4. [Local AI for logbook scanning (Ollama)](#-local-ai-for-logbook-scanning-ollama)
-5. [Cloud sync (Supabase): local or hosted](#-cloud-sync-supabase-local-or-hosted)
-6. [Environment variables](#-environment-variables)
-7. [npm scripts](#-npm-scripts)
-8. [npm packages](#-npm-packages)
+5. [Voice typing (Whisper in the browser)](#-voice-typing-whisper-in-the-browser)
+6. [Cloud sync (Supabase): local or hosted](#-cloud-sync-supabase-local-or-hosted)
+7. [Environment variables](#-environment-variables)
+8. [npm scripts](#-npm-scripts)
 9. [Project structure](#-project-structure)
 10. [Troubleshooting](#-troubleshooting)
 
@@ -32,83 +32,209 @@ An offline-first web app (PWA) for broiler farms: record expenses, feed, mortali
 - **Export** a detailed batch report, the whole history or the farm expenses to **Excel, PDF or CSV**.
 - **Import file:** bring logs in from Excel (.xlsx, .xls), OpenDocument (.ods), CSV or PDF files, including ChickPence's own exports; the entries are reviewed before saving.
 - **Scan logbook:** take a photo of the paper logbook; a **local AI** (Ollama) reads it and drafts the entries for you to review. Nothing is saved until you confirm, and photos never leave the computer.
+- **Voice typing:** say an entry in Filipino, Taglish or English and the entry form fills itself. Speech is turned into text by Whisper inside the browser, so recordings never leave the device.
+- **AI suggestions:** advice on the Dashboard and each Batch Summary, written by the local AI from the app's own computed numbers (can be set to automatic, on request, or off).
 - **Offline-first:** data lives in the browser (IndexedDB via Dexie) and syncs to **Supabase** (PostgreSQL + Auth) when configured and online. Without Supabase the app runs in **Demo Mode** with 8 sample batches.
 
 ---
 
-## 🧩 Dependencies at a glance
+## 🧩 Dependencies
 
-| Dependency | Needed for | Required? | Version used |
+Only **Node.js** and a **browser** are required. Everything else is optional and adds one feature.
+
+### Programs to install
+
+| Program | Needed for | Required? | Version (tested) | Install |
+|---|---|---|---|---|
+| [Node.js](https://nodejs.org/) (includes npm) | Installing packages, running the app, tests and builds | **Yes** | Node **20, 22 or 24+** (tested on 25.9), npm 10+ (tested on 11.12) | `winget install OpenJS.NodeJS.LTS` · `brew install node` |
+| Chrome or Edge | Running the app | **Yes** | any current version | other current browsers work, but voice typing was tested only in Chrome and Edge |
+| [Git](https://git-scm.com/) | Downloading the code | Recommended (or download the ZIP from GitHub) | any (tested on 2.53) | `winget install Git.Git` · `brew install git` |
+| [Ollama](https://ollama.com/) | Logbook scanning, AI suggestions, AI reading of unrecognised import lines and voice sentences | Optional | **0.30+** (tested on 0.40.10) | `winget install Ollama.Ollama` · `brew install ollama` · Linux: `curl -fsSL https://ollama.com/install.sh \| sh` |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Running Supabase on your own computer | Only for local Supabase | tested on 4.96 (Docker 29.9) | `winget install Docker.DockerDesktop`; Windows also needs WSL 2 (`wsl --update --web-download`) |
+| [Supabase CLI](https://supabase.com/docs/guides/cli) | Starting local Supabase | Only for local Supabase | tested on 2.122 | nothing to install: run it with `npx supabase …` |
+| A [Supabase](https://supabase.com/) project | Real accounts and cloud sync | Optional | hosted (free plan) **or** local with Docker | see [Cloud sync](#-cloud-sync-supabase-local-or-hosted) |
+
+### AI models
+
+| Model | Used for | Size | How it gets there |
 |---|---|---|---|
-| [Node.js](https://nodejs.org/) + npm | Installing packages, running the dev server, tests and builds | **Yes** | Node **20, 22 or 24+** (tested on 25.9), npm 10+ |
-| A modern browser | Running the app | **Yes** | Chrome or Edge recommended (camera, IndexedDB, service worker) |
-| [Git](https://git-scm.com/) | Cloning the repository | Recommended | any |
-| [Ollama](https://ollama.com/) + 2 models | **Scan logbook** (local AI) | Optional | Ollama **0.30+** (tested on 0.40.10), models `glm-ocr` and `qwen3.5:4b` |
-| [Supabase](https://supabase.com/) | Cloud sync and real user accounts | Optional | Hosted project, **or** locally with the Supabase CLI (tested on 2.122, run with `npx`) + Docker |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Running Supabase locally | Only for local Supabase | tested on 4.96 (Windows needs an up-to-date WSL 2) |
+| `glm-ocr` (Ollama) | Reading a logbook photo into text | ≈ 2.7 GB | `ollama pull glm-ocr` |
+| `qwen3.5:4b` (Ollama) | Lines the rules can't read, AI suggestions | ≈ 3.3 GB | `ollama pull qwen3.5:4b` |
+| `onnx-community/whisper-small` (Hugging Face) | Voice typing (default, accurate in Filipino) | ≈ 240 MB | downloaded by the browser the first time you tap **🎤 Speak**, then kept for offline use |
+| `onnx-community/whisper-base` (Hugging Face) | Voice typing (faster, weaker in Filipino; choose it in ⚙) | ≈ 73 MB | same as above |
 
-Everything else is an npm package and is installed by `npm install` (see [npm packages](#-npm-packages)).
+Other Ollama vision/chat models can be chosen in **⚙ Local AI settings**.
 
-What works without the optional parts:
+### npm packages
+
+All installed by `npm install` from `package.json` (exact versions are pinned in `package-lock.json`). Nothing to install by hand.
+
+**Runtime** (shipped with the app)
+
+| Package | Version | Used for |
+|---|---|---|
+| `dexie` | 4.4.6 | IndexedDB database in the browser (offline storage, sync outbox, scan queue, suggestions) |
+| `@supabase/supabase-js` | 2.117.2 | Supabase Auth and PostgreSQL sync |
+| `chart.js` | 4.5.1 | Dashboard profit chart |
+| `write-excel-file` | 4.1.1 | Excel (.xlsx) export |
+| `jspdf` | 4.2.1 | PDF export |
+| `jspdf-autotable` | 5.0.9 | Tables in PDF export |
+| `read-excel-file` | 9.3.12 | Importing Excel (.xlsx) files |
+| `xlsx` (SheetJS Community Edition) | 0.20.3 | Importing old Excel (.xls) and OpenDocument (.ods) files. Installed from `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`, because the npm registry copy is no longer updated |
+| `pdfjs-dist` | 6.4.299 | Importing PDF files |
+| `@huggingface/transformers` | 4.3.1 | Running Whisper (voice typing) in the browser; brings `onnxruntime-web`, whose WebAssembly files are served by the app itself |
+
+Chart.js, the export, import and voice libraries are loaded only when used, so the app starts fast. They are stored by the service worker, so they also work offline.
+
+**Development** (only for building and testing)
+
+| Package | Version | Used for |
+|---|---|---|
+| `vite` | 6.4.5 | Dev server and bundler |
+| `@vitejs/plugin-basic-ssl` | 2.3.0 | Self-signed https for `npm run dev:lan` / `preview:lan` |
+| `vite-plugin-pwa` | 0.21.2 | Service worker and web app manifest (offline PWA) |
+| `workbox-window` | 7.4.1 | Service worker updates |
+| `tailwindcss` + `@tailwindcss/vite` | 4.3.3 | CSS framework |
+| `postcss`, `autoprefixer` | 8.5.28 / 10.6.1 | CSS processing |
+| `vitest` | 4.1.12 | Unit tests (needs Node 20+) |
+
+### Downloaded while the app runs
+
+| What | From | When |
+|---|---|---|
+| Poppins font | Google Fonts | page load (falls back to the system font offline) |
+| Whisper model files | huggingface.co | first use of voice typing only |
+| Noto Sans (for ₱ in PDFs) | bundled in the app (`src/assets/fonts/`) | nothing to download |
+
+### What works without the optional parts
 
 | Setup | What you get |
 |---|---|
-| Node only | The full app in Demo Mode: batches, expenses, feed, mortality, sales, dashboard, history, exports |
-| + Ollama | Logbook scanning |
-| + Supabase | Sign-in with real accounts and sync to PostgreSQL |
+| Node + browser only | The full app in **Demo Mode**: batches, expenses, feed, mortality, sales, dashboard, history, export, file import, voice typing (after the one-time model download) |
+| + Ollama and its 2 models | Logbook photo scanning, AI suggestions, AI reading of lines the rules can't read |
+| + Supabase (local with Docker, or hosted) | Sign-in with real accounts and sync to PostgreSQL |
 
 ---
 
-## 🚀 Quick start (app only)
+## 🚀 How to run the app
 
-### 1. Install Node.js
+### First time only
 
-Install the **LTS** version from [nodejs.org](https://nodejs.org/), or with a package manager:
+1. **Install Node.js** (LTS) and check it is 20 or newer:
 
-```bash
-# Windows
-winget install OpenJS.NodeJS.LTS
-```
-```bash
-# macOS
-brew install node
-```
+   ```bash
+   winget install OpenJS.NodeJS.LTS
+   ```
+   ```bash
+   node -v
+   ```
 
-Check it (Node must be 20 or newer):
+   On macOS use `brew install node`; on Linux, your package manager or [nodejs.org](https://nodejs.org/).
 
-```bash
-node -v
-```
+2. **Get the code** (or download the ZIP from GitHub and unzip it):
 
-### 2. Get the code and install packages
+   ```bash
+   git clone https://github.com/jersy26/ChickPence.git
+   ```
+   ```bash
+   cd ChickPence
+   ```
 
-```bash
-git clone https://github.com/jersy26/ChickPence.git
-```
-```bash
-cd ChickPence
-```
-```bash
-npm install
-```
+3. **Install the npm packages** (a few minutes the first time):
 
-### 3. Run the app
+   ```bash
+   npm install
+   ```
+
+4. *(Optional)* **Settings file.** Only needed for Supabase or a non-default Ollama setup:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+### Start the app
 
 ```bash
 npm run dev
 ```
 
-Open **http://localhost:3000**. If port 3000 is busy, Vite picks the next free port and prints it in the terminal.
+Open **http://localhost:3000** in Chrome or Edge. If port 3000 is busy, the terminal shows the address it used instead (e.g. 3001).
 
-On Windows you can also double-click **`start.bat`**: it opens the browser and starts the dev server.
+On Windows you can instead double-click **`start.bat`**: it installs the packages if they are missing, starts the app and opens the browser.
 
-### 4. Try it in Demo Mode
+Leave the terminal open while you use the app; press **Ctrl + C** in it to stop.
 
-On the login screen click **Instant Demo Mode**. The app creates 8 realistic batches (`Batch 2025-08` to `Batch 2026-09`) in the browser's IndexedDB. Nothing is sent anywhere.
+### Use it without an account (Demo Mode)
 
-To start the demo data over, clear the site data in the browser (DevTools → Application → Storage → Clear site data) and reload.
+On the login screen click **Instant Demo Mode**. The app creates 8 realistic batches (`Batch 2025-08` to `Batch 2026-09`) in the browser. Nothing is sent anywhere and no internet is needed.
 
-The demo batches exist only in Demo Mode. When a real Supabase account logs in on the same browser, the demo data is cleared and that account's own records are downloaded. Records that have not been uploaded yet are never cleared.
+To start the demo data over, clear the site data (DevTools → Application → Storage → Clear site data) and reload. When a real Supabase account logs in on the same browser, the demo data is cleared and that account's own records are downloaded; records not uploaded yet are never cleared.
+
+### Turn on the local AI (optional)
+
+1. Install and open Ollama (it then runs in the background), and download the two models once:
+
+   ```bash
+   ollama pull glm-ocr
+   ```
+   ```bash
+   ollama pull qwen3.5:4b
+   ```
+
+2. In the app: **Open Batches → ⚙** (next to 📷 Scan logbook) → **Test connection** → pick the models → **Save**.
+
+Details, hardware and other models: [Local AI](#-local-ai-for-logbook-scanning-ollama).
+
+### Turn on accounts and sync (optional)
+
+Local Supabase, with Docker Desktop running:
+
+```bash
+npx supabase start -x realtime,storage-api,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor
+```
+
+Then put its URL and anon key in `.env` (or in **⚙ Connect Supabase Cloud** on the login screen), restart `npm run dev`, create a user in Supabase Studio (http://127.0.0.1:54323) and log in. Full steps, and the hosted option: [Cloud sync](#-cloud-sync-supabase-local-or-hosted).
+
+### Every day, with everything turned on
+
+1. Start **Docker Desktop**, then `npx supabase start -x …` (only if you use local Supabase).
+2. Make sure **Ollama** is running (tray icon; only if you use the AI features).
+3. `npm run dev` (or `start.bat`) and open http://localhost:3000.
+
+### Production build (offline install)
+
+The offline service worker only works in the production build:
+
+```bash
+npm run build
+```
+```bash
+npm run preview
+```
+
+Open **http://localhost:4173**. To host the built `dist/` folder on another server, that server must send `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: credentialless` (voice typing is about 5× slower without them).
+
+### On a phone or another computer
+
+On the farm PC, start the app on the local network over https:
+
+```bash
+npm run dev:lan
+```
+
+On the phone (same Wi-Fi), open the `https://<PC's IP>:3000` address the terminal prints and accept the certificate warning once (**Advanced → Proceed**). See [Scanning from a phone](#scanning-from-a-phone-or-another-computer).
+
+### Run the tests
+
+```bash
+npm test
+```
+
+### Stop everything
+
+- The app: **Ctrl + C** in its terminal.
+- Local Supabase (data is kept): `npx supabase stop`.
+- Ollama: quit it from the tray icon, or leave it running (it frees the model's memory after a few idle minutes).
 
 ---
 
@@ -216,6 +342,19 @@ Ollama stays as it is (only reachable from the farm PC). The app's own server pa
 Plain `npm run dev -- --host` (http) also works for scanning, but then the microphone is hidden on the phone.
 
 The `/ollama` pass-through exists only in `npm run dev` / `npm run preview`. If you host the built app elsewhere, give that server the same pass-through (to `http://localhost:11434`, without the `Origin` header), or set `OLLAMA_HOST` and `OLLAMA_ORIGINS` on the farm PC and use `http://<IP>:11434`.
+
+---
+
+## 🎤 Voice typing (Whisper in the browser)
+
+In **+ Add New Log** (new entries), tap **🎤 Speak**, say one entry, and pause. The recording stops by itself, is turned into text **on this device**, and the form fills in: the right tab, the batch, the date and the amounts. Check the highlighted fields and tap **Save**. Example: *"May tatlong patay sa batch siyam kahapon"* → Mortality, Batch 2026-09, yesterday, 3.
+
+- **Nothing to install.** The first time, the browser downloads the Whisper model (≈ 240 MB, about a minute); after that it works **offline**.
+- **Language:** Filipino or English (PH), picked next to the mic. **⚙ Local AI settings → Voice typing model** switches to the faster but weaker `whisper-base`.
+- The text box under the mic shows what was heard; fix a word and press **Fill form**, or type a sentence without the mic.
+- Sentences the built-in rules can't read go to the Ollama text model, if it is running.
+- **Microphone access** needs `localhost` or an **https** page. On a phone use `npm run dev:lan` (see [Scanning from a phone](#scanning-from-a-phone-or-another-computer)).
+- **Speed:** a sentence takes about 10–18 s on a CPU-only PC. The app must be served with the COOP/COEP headers (`npm run dev` and `npm run preview` do this) to use several CPU threads.
 
 ---
 
@@ -337,7 +476,7 @@ cp .env.example .env
 |---|---|---|
 | `VITE_SUPABASE_URL` | *(empty → Demo Mode)* | Supabase API URL, e.g. `http://127.0.0.1:54321` (local) or `https://xyz.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | *(empty)* | Supabase anon (public) key |
-| `VITE_OLLAMA_URL` | `http://localhost:11434` | Ollama address |
+| `VITE_OLLAMA_URL` | `http://localhost:11434` on the farm PC, `/ollama` from other devices | Ollama address |
 | `VITE_OLLAMA_OCR_MODEL` | `glm-ocr` | Vision model that reads the photo |
 | `VITE_OLLAMA_TEXT_MODEL` | `qwen3.5:4b` | Text model for lines the rules can't read |
 
@@ -359,48 +498,16 @@ The offline service worker is only active in the production build, so test offli
 
 ---
 
-## 📦 npm packages
-
-Installed by `npm install` from `package.json`. Versions are the ones in `package-lock.json`.
-
-**Runtime**
-
-| Package | Version | Used for |
-|---|---|---|
-| `dexie` | 4.4 | IndexedDB database in the browser (offline storage, sync outbox, scan queue) |
-| `@supabase/supabase-js` | 2.117 | Supabase Auth and PostgreSQL sync |
-| `chart.js` | 4.5 | Dashboard charts (loaded with the Dashboard chart) |
-| `write-excel-file` | 4.1 | Excel (.xlsx) export |
-| `jspdf` | 4.2 | PDF export |
-| `jspdf-autotable` | 5.0 | Tables in PDF export |
-| `read-excel-file` | 9.3 | Importing Excel (.xlsx) files |
-| `xlsx` (SheetJS CE, from cdn.sheetjs.com) | 0.20.3 | Importing old Excel (.xls) and OpenDocument (.ods) files |
-| `pdfjs-dist` | 6.4 | Importing PDF files |
-| `@huggingface/transformers` | 4.3.1 | Whisper voice typing in the browser |
-
-The export, import and voice libraries are loaded only when used, so the main app stays small. SheetJS comes from its own CDN tarball because the npm `xlsx` package is no longer updated.
-
-**Development**
-
-| Package | Version | Used for |
-|---|---|---|
-| `vite` | 6.4 | Dev server and bundler |
-| `@vitejs/plugin-basic-ssl` | 2.3 | Self-signed https for `dev:lan` / `preview:lan` |
-| `vite-plugin-pwa` + `workbox-window` | 0.21 / 7.3 | Service worker and web app manifest (offline PWA) |
-| `tailwindcss` + `@tailwindcss/vite` | 4.3 | CSS framework |
-| `postcss`, `autoprefixer` | 8.5 / 10.4 | CSS processing |
-| `vitest` | 4.1 | Unit tests (requires Node 20+) |
-
----
-
 ## 📁 Project structure
 
 ```
 ChickPence/
 ├── public/                     # Icons for the PWA
 ├── src/
+│   ├── assets/fonts/           # Noto Sans for PDFs (₱ sign), SIL OFL licence
 │   ├── db/
-│   │   ├── dexie.js            # IndexedDB schema (v4) and upgrades
+│   │   ├── dexie.js            # IndexedDB schema and upgrades
+│   │   ├── localData.js        # Whose records the browser holds (demo vs. account)
 │   │   └── seed.js             # Demo Mode sample batches
 │   ├── services/
 │   │   ├── repository.js       # All reads and writes (single write path)
@@ -411,14 +518,20 @@ ChickPence/
 │   │   ├── supabaseClient.js   # Supabase client and credentials
 │   │   ├── auth.js             # Supabase Auth or Demo session
 │   │   ├── exportService.js    # Excel / PDF / CSV reports
+│   │   ├── fileImport.js       # Excel / CSV / PDF / .xls / .ods → draft entries
 │   │   ├── localLlm.js         # Ollama client and settings
-│   │   ├── logbookParser.js    # Rule-based logbook line reader
-│   │   └── aiParseService.js   # Scan flow: photo → drafts, scan queue
+│   │   ├── logbookParser.js    # Rule-based logbook and spoken-sentence reader
+│   │   ├── aiParseService.js   # Scan flow: photo → drafts, scan queue
+│   │   ├── speechInput.js      # Recording and the Whisper worker client
+│   │   ├── whisperWorker.js    # Whisper (Transformers.js) in a Web Worker
+│   │   └── insightsService.js  # AI suggestions from computed facts
 │   ├── ui/
 │   │   ├── dashboardView.js, batchesView.js, historyView.js, summaryView.js, loginView.js, shell.js
 │   │   ├── exportMenu.js       # Export modal
-│   │   ├── importReviewModal.js# Review scanned entries, scan progress
-│   │   ├── localAiModal.js     # Local AI settings
+│   │   ├── importReviewModal.js# Review scanned / imported entries, scan progress
+│   │   ├── localAiModal.js     # Local AI and voice settings
+│   │   ├── insightsCard.js     # Suggestions card
+│   │   ├── syncProblemsModal.js# Changes the server refused
 │   │   └── modals.js, toast.js
 │   ├── main.js                 # App start-up and view router
 │   └── style.css
@@ -449,5 +562,8 @@ ChickPence/
 | `npx supabase start` fails | Make sure the Docker engine is running (`docker info` must not show an error). If downloads stop with *"unexpected EOF"*, Docker ran out of memory: use the `-x ...` command from Option A step 3 and run it again |
 | Feed logs never finish syncing (`Could not find the 'quantity_g' column`) | Run `20261028000000_v3_feed_grams.sql` on the database (`npx supabase migration up` locally, SQL Editor when hosted) |
 | Docker Desktop says "unable to start" or "WSL needs updating" (Windows) | Run `wsl --update --web-download` in PowerShell as Administrator, check `wsl --version` prints a version, restart, then start Docker Desktop again |
+| No 🎤 Speak button | The page must be `localhost` or https, and the browser must allow the microphone. On a phone use `npm run dev:lan` |
+| Voice typing is very slow | The app must be served with the COOP/COEP headers (`npm run dev` / `npm run preview` do); the first use also downloads the model |
+| `npm install` fails on the `xlsx` package | It downloads from `cdn.sheetjs.com`: check the internet connection or a firewall/proxy blocking that site |
 | Changes to `.env` have no effect | Restart `npm run dev`; also check the in-app ⚙ settings, which override `.env` |
 | Some records stay "pending sync" | A record Supabase rejects is retried on every sync, and other records keep uploading. Records of a rejected batch wait for it. The browser console shows `Sync error on …` with the reason |
