@@ -28,7 +28,7 @@ const EXPENSE_PAGE_SIZE = 15;
 // ---------------------------------------------------------------------------
 
 function metricCell(val, formatter) {
-  if (val === NA) return `<span class="text-mut">${NA}</span>`;
+  if (val === NA) return `<span class="text-mut">Not available</span>`;
   return formatter(val);
 }
 
