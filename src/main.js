@@ -1023,6 +1023,7 @@ function attachOperationActions(home) {
    if(state.role==='staff')return showToast('Request a correction in Logbook.');
    if(confirm('Delete this saved entry? This changes the batch records and queues the deletion for upload.')){const original=await db[b.dataset.table].get(b.dataset.id);await Repository.deleteRecord(b.dataset.table,b.dataset.id);await render();offerUndoEntry(b.dataset.table,original);}
  }));
+ appContainer.querySelectorAll('[data-batch-summary]').forEach(b=>b.addEventListener('click',()=>navigate('summary',b.dataset.batchSummary)));
  appContainer.querySelectorAll('[data-batch-threshold]').forEach(b=>b.addEventListener('click',()=>{const item=home.openBatchesData.find(i=>i.batch.batch_id===b.dataset.batchThreshold);if(item)openThresholdModal(item.batch,async patch=>{await Repository.updateBatchThresholds(item.batch.batch_id,patch);render();});}));
  appContainer.querySelectorAll('[data-batch-close]').forEach(b=>b.addEventListener('click',()=>{
    const item=home.openBatchesData.find(i=>i.batch.batch_id===b.dataset.batchClose);if(!item)return;

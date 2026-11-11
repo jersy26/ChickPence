@@ -60,6 +60,8 @@ describe('TC-S-01: create two batches', () => {
     expect(items.map((i) => i.batch.batch_id)).toEqual([a.batch_id, b.batch_id]);
     expect(html).toContain('Batch A');
     expect(html).toContain('Batch B');
+    // The chosen open batch's provisional summary opens from its ⋯ menu (FR-18)
+    expect(html).toContain(`data-batch-summary="${b.batch_id}">View summary</button>`);
   });
 });
 
