@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => ({
     mode === 'lan' && basicSsl({ name: 'chickpence-lan' }),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192x192.svg', 'pwa-512x512.svg'],
+      includeAssets: ['favicon.svg', 'pwa-192x192.svg', 'pwa-512x512.svg'],
       manifest: {
         name: 'ChickPence: Poultry Cost & Profitability',
         short_name: 'ChickPence',

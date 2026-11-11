@@ -35,12 +35,13 @@ const changeTables = (tableName) =>
  * one transaction: either all of it is stored or none of it. Before, these
  * were separate writes, and a tab closed in between left a change on this
  * device that was never uploaded (or costs shared from old numbers).
- * recompute: true for every expense, or a list of expense_ids.
+ * recompute: true for every expense, or a list of expense_ids. A change that
+ * would leave a shared expense with no batch is refused and nothing is saved.
  */
 async function saveAndQueue(tableName, record, { recompute = null } = {}) {
   const saved = await db.transaction('rw', changeTables(tableName), async (tx) => {
     const saved = await syncEngine.writeUpsert(tableName, record);
-    if (recompute) await recomputeAllocations(tx, recompute === true ? null : recompute);
+    if (recompute) await recomputeAllocations(tx, recompute === true ? null : recompute, { keepShared: true });
     return saved;
   });
   syncEngine.changed();

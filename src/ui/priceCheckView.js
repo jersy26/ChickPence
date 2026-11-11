@@ -3,27 +3,41 @@
  * "The buyer offers ₱___/kg. Am I losing money?" (thesis SOP 3.3, audit section 9).
  */
 
-import { calcBatchMetrics, liveHeadCount } from '../services/allocationEngine.js';
+import { calcBatchMetrics, liveHeadCount, toCentavos, toGrams, saleAmountCentavos } from '../services/allocationEngine.js';
 import { formatPeso, formatNumber } from '../services/calculations.js';
 import { kgPerHead, addDays } from '../services/guidedQuestions.js';
 import { escapeHtml } from './html.js';
+
+/** a × b ÷ c rounded half up, for whole numbers a, b ≥ 0 and c > 0. */
+const mulDivHalfUp = (a, b, c) => Math.floor((2 * a * b + c) / (2 * c));
 
 /**
  * Result of selling `heads` birds weighing `kg` at `price` per kg (pure).
  * The birds sold carry their share of the cost not yet recovered:
  *   share     = (cost to date − sales to date) × heads ÷ live birds
  *   breakEven = share ÷ kg
+ * Worked in whole centavos and grams (NFR-04); the result is returned in pesos.
  */
 export function priceCheck({ totalCost, revenue, live, heads, kg, price }) {
-  const unrecovered = Math.max(0, totalCost - revenue);
-  const h = Math.min(Math.max(0, Number(heads) || 0), live);
-  const w = Math.max(0, Number(kg) || 0);
+  const unrecoveredC = Math.max(0, toCentavos(totalCost) - toCentavos(revenue));
+  const h = Math.min(Math.max(0, Math.floor(Number(heads) || 0)), live);
+  const grams = Math.max(0, toGrams(kg));
   const p = Math.max(0, Number(price) || 0);
-  const share = live > 0 ? (unrecovered * h) / live : 0;
-  const saleRevenue = w * p;
-  const result = saleRevenue - share;
-  const breakEven = w > 0 ? share / w : null;
-  return { unrecovered, heads: h, share, saleRevenue, result, breakEven, verdict: w <= 0 || h <= 0 || p <= 0 ? 'incomplete' : result >= 0 ? 'profit' : 'loss' };
+  const shareC = live > 0 ? mulDivHalfUp(unrecoveredC, h, live) : 0;
+  // The same rule as a saved sale's amount
+  const saleC = saleAmountCentavos({ weight_kg: grams / 1000, price_per_kg: p });
+  const resultC = saleC - shareC;
+  // Centavos per kg: share × 1,000 ÷ grams
+  const breakEvenC = grams > 0 ? mulDivHalfUp(shareC, 1000, grams) : null;
+  return {
+    unrecovered: unrecoveredC / 100,
+    heads: h,
+    share: shareC / 100,
+    saleRevenue: saleC / 100,
+    result: resultC / 100,
+    breakEven: breakEvenC == null ? null : breakEvenC / 100,
+    verdict: grams <= 0 || h <= 0 || p <= 0 ? 'incomplete' : resultC >= 0 ? 'profit' : 'loss'
+  };
 }
 
 /** Numbers the form needs for each open batch (pure). */
