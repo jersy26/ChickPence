@@ -24,7 +24,7 @@ export function renderCompanion(mascot, items, { staff = false, financialHtml = 
 export function renderWelcome(user, summary = {}) {
   return `<section class="welcome-screen" id="flock-welcome" aria-labelledby="welcome-title"><div class="welcome-card">
     <div class="welcome-wordmark">Chick<span>Pence</span><i>.</i></div>
-    <h1 id="welcome-title">Hi, ${escapeHtml(userDisplayName(user))}.</h1><p>Let's start a good day.</p><div class="rd-welcome-chips"><span>${summary.alerts || 0} alerts</span><span>${summary.tasks || 0} tasks due</span><span>${summary.questions || 0} new questions</span></div>
+    <h1 id="welcome-title">Hi, ${escapeHtml(userDisplayName(user))}.</h1><p>Let's start a good day.</p><div class="rd-welcome-chips"><span>${summary.alerts || 0} alerts</span><span>${summary.tasks || 0} tasks due</span><span>${summary.questions || 0} new insights</span></div>
     <button type="button" class="welcome-character" id="welcome-hello" aria-label="Say hello to your welcome chicken"><span class="welcome-bubble">You're all set!<br>Your flock is waiting.</span>${companionArt({stage:'ready',mood:'hello'})}</button>
     <button class="welcome-enter" id="btn-enter-flock" type="button"><svg width="30" height="40" viewBox="0 0 30 40" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M15 2v32M4 23l11 12 11-12"/></svg><span>Discover your flock's day</span><small>Scroll down or tap to begin</small></button>
   </div></section>`;

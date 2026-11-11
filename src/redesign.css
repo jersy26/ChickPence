@@ -3782,72 +3782,6 @@ button.welcome-character .welcome-bubble {
   color:#4E483D
 }
 
-.gq-footer {
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  margin-top:auto;
-  padding-top:5px
-}
-
-.gq-check-state {
-  font-size:10px;
-  color:#6B6457;
-  line-height:1.3
-}
-
-.gq-check-state:not(.checked):before {
-  content:'';
-  display:inline-block;
-  width:6px;
-  height:6px;
-  margin-right:5px;
-  border-radius:50%;
-  background:currentColor
-}
-
-.gq-check-state.checked {
-  color:#2F6B3F;
-  font-weight:600
-}
-
-.gq-answer-cta {
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-height:34px;
-  border-radius:999px;
-  padding:8px 10px;
-  background:#2B2A26;
-  color:#FFFDF8;
-  font-size:10px;
-  font-weight:600;
-  white-space:nowrap;
-  flex:none
-}
-
-.gq-progress-dots {
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:3px;
-  max-width:100px;
-  margin-left:auto
-}
-
-.gq-progress-dots i {
-  display:block;
-  width:7px;
-  height:7px;
-  border-radius:50%;
-  background:#E1D8C4
-}
-
-.gq-progress-dots i.checked {
-  background:#4E9A61
-}
-
 .dense-overview .rd-insight-progress {
   font-size:11px;
   font-weight:600
@@ -4259,22 +4193,11 @@ button.welcome-character .welcome-bubble {
   .dense-overview .gq-meaning {
     font-size:13px
   }
-  .dense-overview .gq-answer-cta {
-    min-height:44px;
-    padding:10px 14px;
-    font-size:12px
-  }
   .dense-overview .gq-tone {
     font-size:10px
   }
   .dense-overview .gq-batch {
     font-size:11px
-  }
-  .dense-overview .gq-check-state {
-    font-size:12px
-  }
-  .dense-overview .gq-progress-dots {
-    margin-left:0
   }
   .dense-overview .rd-insight-progress {
     font-size:11px
@@ -4346,27 +4269,8 @@ button.welcome-character .welcome-bubble {
   margin:0
 }
 
-.dense-overview .gq-answer-cta {
-  border:0;
-  font-family:inherit;
-  cursor:pointer;
-  color:#FFFDF8
-}
-
-.dense-overview .gq-answer-cta:hover {
-  background:#49473f
-}
-
 .home-batch-link {
   min-height:44px
-}
-
-.dense-overview .gq-card {
-  cursor:default
-}
-
-.dense-overview .gq-footer {
-  width:100%
 }
 
 /* KPI rows placed straight on the page get the same card surface as the filter bar, so they do not blend into the background */
@@ -4602,4 +4506,110 @@ button.welcome-character .welcome-bubble {
 .rd-companion .companion-touch-hint {
   position:static;
   margin-top:6px
+}
+
+.gq-card {
+  position:relative
+}
+
+.gq-card-link {
+  font:inherit;
+  color:inherit;
+  text-align:left;
+  background:none;
+  border:0;
+  padding:0;
+  margin:0;
+  cursor:pointer
+}
+
+.gq-card-link:after {
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius:22px
+}
+
+.gq-card .gq-card-link:focus-visible {
+  outline:none
+}
+
+.gq-card:has(.gq-card-link:focus-visible) {
+  outline:3px solid #a57600;
+  outline-offset:2px
+}
+
+.gq-section .rd-insight-progress {
+  margin-left:auto
+}
+
+.dense-overview .gq-row .gq-card {
+  background:#FFFDF8;
+  border-color:#ECE3D0;
+  gap:8px;
+  padding-left:22px;
+  box-shadow:inset 6px 0 0 var(--gq-tone,#ECE3D0)
+}
+
+@media (max-width:719px) {
+  .gq-section .rd-insight-progress {
+    margin-left:0
+  }
+}
+
+.gq-card.tone-bad,.gq-legend .tone-bad {
+  --gq-tone:#C8553D
+}
+
+.gq-card.tone-warn,.gq-legend .tone-warn {
+  --gq-tone:#D9A030
+}
+
+.gq-card.tone-info,.gq-legend .tone-info {
+  --gq-tone:#4F82A8
+}
+
+.gq-card.tone-ok,.gq-legend .tone-ok {
+  --gq-tone:#4E9A61
+}
+
+.gq-legend {
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px 14px;
+  margin:8px 0 0;
+  font-size:11px;
+  color:#6B6457
+}
+
+.gq-legend span {
+  display:inline-flex;
+  align-items:center;
+  gap:6px
+}
+
+.gq-legend span:before {
+  content:'';
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--gq-tone)
+}
+
+.gq-groups {
+  display:grid;
+  gap:20px;
+  margin-top:18px
+}
+
+.gq-group-title {
+  margin:0 0 10px;
+  font-size:14px;
+  font-weight:700;
+  color:#2B2A26
+}
+
+.dense-overview .gq-group .gq-row {
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  margin-top:0
 }

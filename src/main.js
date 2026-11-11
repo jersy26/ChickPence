@@ -16,7 +16,7 @@ import { prepareLocalDataFor } from './db/localData.js';
 import { syncEngine } from './services/syncEngine.js';
 import { renderShell, attachShellListeners, renderSyncStatus, setShellContext } from './ui/shell.js';
 import { findSub, defaultSubFor, navForRole, LABS } from './ui/navigation.js';
-import { renderGuidedCards, openAnswerModal, renderTodo, renderTaskTracker, mascotState, renderGreeting } from './ui/homeWidgets.js';
+import { renderGuidedCards, questionCards, openAnswerModal, renderTodo, renderTaskTracker, mascotState, renderGreeting } from './ui/homeWidgets.js';
 import { buildLogRows, renderLogbook, attachLogbookListeners } from './ui/logbookView.js';
 import { renderReports, attachReports } from './ui/reportsView.js';
 import { renderApprovals, attachApprovals } from './ui/approvalsView.js';
@@ -278,7 +278,7 @@ async function render() {
       cardsHtml: renderGuidedCards(home.cards, { expanded: state.gqExpanded, role: state.role, batchNames: Object.fromEntries([...home.openBatchesData,...home.closedBatchesData].map(i=>[i.batch.batch_id,i.batch.batch_name])), seen: readPreview(AuthService.getUser().id,`insights-seen:${home.today}`,[]) }),
       todoHtml: renderTodo(home.tasks,{compact:true})
     });
-    appContainer.innerHTML = `${state.showWelcome ? renderWelcome(displayUser(),{alerts:notificationsFrom(home).length,tasks:home.tasks.total-home.tasks.done,questions:home.cards.length}) : ''}${renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render)}`;
+    appContainer.innerHTML = `${state.showWelcome ? renderWelcome(displayUser(),{alerts:notificationsFrom(home).length,tasks:home.tasks.total-home.tasks.done,questions:questionCards(home.cards,state.role).length}) : ''}${renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render)}`;
     attachWelcome(appContainer);
     attachCompanion(appContainer, batchId => { state.mascotBatchId = batchId; render(); });
     attachShellListeners(appContainer, navigate, handleLogout, render, openSync, changeRole);
@@ -548,9 +548,7 @@ function attachHomeListeners(home) {
     const seen=readPreview(AuthService.getUser().id,`insights-seen:${home.today}`,[]);
     if(!seen.includes(btn.dataset.question))writePreview(AuthService.getUser().id,`insights-seen:${home.today}`,[...seen,btn.dataset.question]);
     const questionCard=btn.closest('.gq-card')||btn;questionCard.dataset.seen='true';
-    const checkedLabel=questionCard.querySelector('[data-question-check]');if(checkedLabel){checkedLabel.textContent='✓ Checked';checkedLabel.classList.add('checked');}
-    appContainer.querySelectorAll('[data-question-dot]').forEach(dot=>{if(dot.dataset.questionDot===btn.dataset.question)dot.classList.add('checked');});
-    const progress=appContainer.querySelector('.rd-insight-progress');if(progress)progress.textContent=`${new Set([...seen,btn.dataset.question]).size} of ${home.cards.length} checked`;
+    const progress=appContainer.querySelector('.rd-insight-progress');if(progress){const listed=questionCards(home.cards,state.role);progress.textContent=`${listed.filter(c=>c.id===btn.dataset.question||seen.includes(c.id)).length} of ${listed.length} reviewed`;};
     const card = home.cards.find((c) => c.id === btn.dataset.question);
     if (card) openAnswerModal(card, (view, batchId) => {
       if (view === 'price-check') state.priceInput = { batchId };

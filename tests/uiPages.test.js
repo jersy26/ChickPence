@@ -104,6 +104,27 @@ describe('home widgets', () => {
     expect(renderGuidedCards(cards, { expanded: true }).match(/data-question=/g)).toHaveLength(5);
   });
 
+  it('leaves the tasks card to the to-do list for owners, and has no See answer button', () => {
+    const card = (id) => ({ id, icon: id === 'tasks' ? 'check' : 'coins', tone: 'info', question: id, value: 'v', meaning: 'm', answer: {} });
+    const cards = [card('money:b1'), card('tasks')];
+    const owner = renderGuidedCards(cards);
+    expect(owner).toContain('data-question="money:b1"');
+    expect(owner).not.toContain('data-question="tasks"');
+    expect(owner).not.toContain('See answer');
+    expect(renderGuidedCards(cards, { role: 'staff' })).toContain('data-question="tasks"');
+  });
+
+  it('groups cards under their batch, most urgent batch first, naming the batch once', () => {
+    const html = renderGuidedCards([
+      { id: 'money:b2', icon: 'coins', tone: 'info', question: 'Am I losing money on Batch 8?', value: 'v', meaning: 'm', answer: { batchId: 'b2' } },
+      { id: 'price:b1', icon: 'tag', tone: 'bad', question: 'What price do I need for Batch 7?', value: 'v', meaning: 'm', answer: { batchId: 'b1' } }
+    ], { batchNames: { b1: 'Batch 7', b2: 'Batch 8' } });
+    expect(html.indexOf('<h3 class="gq-group-title">Batch 7</h3>')).toBeLessThan(html.indexOf('<h3 class="gq-group-title">Batch 8</h3>'));
+    expect(html).toContain('>What price do I need?</button>');
+    expect(html).toContain('aria-label="Urgent: What price do I need for Batch 7?"');
+    expect(html).toContain('<span class="tone-bad">Urgent</span><span class="tone-info">For you</span>');
+  });
+
   it('offers "No deaths today" only on tasks not done yet', () => {
     const html = renderTodo({ done: 1, total: 2, overdue: 0, tasks: [
       { id: 'a', type: 'deaths', batchId: 'b1', label: 'Record deaths', due: '18:00', done: false, canMarkNone: true },
