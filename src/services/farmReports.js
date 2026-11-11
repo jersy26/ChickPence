@@ -5,7 +5,7 @@ export const FARM_REPORTS=[['flock','Flock balance'],['health','Feed & mortality
 export function buildFarmReport(items=[],expenses=[],tab='flock',filters={}) {
   const end=filters.to||localToday(),start=filters.from||'',query=(filters.q||'').trim().toLowerCase();
   const period=date=>date && (!start||date>=start) && date<=end;
-  const selected=items.filter(({batch})=>batch && !batch.deleted_at && batch.start_date<=end && (!start||!batch.end_date||batch.end_date>=start) && (!filters.status||batch.status===filters.status) && (!query||batch.batch_name.toLowerCase().includes(query)));
+  const selected=items.filter(({batch})=>batch && !batch.deleted_at && batch.start_date<=end && (!start||!batch.end_date||batch.end_date>=start) && (!filters.status||batch.status===filters.status) && (!query||batch.batch_name.toLowerCase()===query));
   const ledger=buildPnlLedger(selected,expenses);
   if(tab==='sales') {
     const rows=[];

@@ -4502,3 +4502,83 @@ button.welcome-character .welcome-bubble {
 .rd-overdue-note b {
   color:#9A3A26
 }
+
+/* Batch name picker in Reports: a select-styled button whose list opens on hover or focus */
+.rd-hover-select {
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  flex:1.7 1 200px;
+  min-width:180px
+}
+
+.rd-hover-trigger {
+  width:100%;
+  min-height:44px;
+  padding:10px 38px 10px 14px;
+  text-align:left;
+  border:1px solid var(--ln);
+  border-radius:12px;
+  background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236B6457' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 14px center;
+  color:var(--ink);
+  font:inherit;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  cursor:pointer
+}
+
+.rd-hover-list {
+  display:none;
+  position:absolute;
+  top:100%;
+  left:0;
+  right:0;
+  z-index:30;
+  max-height:280px;
+  overflow:auto;
+  margin-top:4px;
+  padding:6px;
+  border:1px solid var(--ln);
+  border-radius:14px;
+  background:var(--card);
+  box-shadow:0 12px 28px rgba(43,42,38,.12)
+}
+
+/* bridge the 4px gap so the list stays open while the pointer moves onto it */
+.rd-hover-list::before {
+  content:'';
+  position:absolute;
+  left:0;
+  right:0;
+  top:-6px;
+  height:6px
+}
+
+.rd-hover-select:hover .rd-hover-list,.rd-hover-select:focus-within .rd-hover-list {
+  display:block
+}
+
+.rd-hover-option {
+  display:block;
+  width:100%;
+  padding:9px 12px;
+  border:0;
+  border-radius:10px;
+  background:none;
+  text-align:left;
+  font:inherit;
+  font-size:14px;
+  color:var(--ink);
+  cursor:pointer
+}
+
+.rd-hover-option:hover,.rd-hover-option:focus-visible {
+  background:#FCF1C7
+}
+
+.rd-hover-option.active {
+  background:#F7DF8A;
+  font-weight:600
+}
