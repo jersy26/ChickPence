@@ -6,7 +6,7 @@ import { userCounts, filterUsers } from '../src/ui/usersView.js';
 import { renderSidebar } from '../src/ui/shell.js';
 import { renderGuidedCards, renderTodo, mascotState } from '../src/ui/homeWidgets.js';
 
-describe('priceCheck', () => {
+describe('TC-U-14: priceCheck', () => {
   it('gives the birds sold their share of the unrecovered cost and compares it with the sale', () => {
     // 100,000 still to recover over 1,000 birds; selling 500 birds (1,000 kg)
     const r = priceCheck({ totalCost: 150000, revenue: 50000, live: 1000, heads: 500, kg: 1000, price: 120 });
@@ -15,6 +15,20 @@ describe('priceCheck', () => {
     expect(r.saleRevenue).toBe(120000);
     expect(r.verdict).toBe('profit');
     expect(priceCheck({ totalCost: 150000, revenue: 50000, live: 1000, heads: 500, kg: 1000, price: 40 }).verdict).toBe('loss');
+  });
+
+  it('an offer at the break-even price covers the share exactly', () => {
+    const r = priceCheck({ totalCost: 150000, revenue: 50000, live: 1000, heads: 500, kg: 1000, price: 50 });
+    expect(r.result).toBe(0);
+    expect(r.verdict).toBe('profit');
+  });
+
+  it('works in whole centavos: ₱100.00 over 3 birds, 1 bird of 1.5 kg', () => {
+    const r = priceCheck({ totalCost: 100, revenue: 0, live: 3, heads: 1, kg: 1.5, price: 22.22 });
+    expect(r.share).toBe(33.33); // 10,000 ¢ ÷ 3, rounded half up
+    expect(r.breakEven).toBe(22.22); // 3,333 ¢ × 1,000 ÷ 1,500 g
+    expect(r.saleRevenue).toBe(33.33);
+    expect(r.result).toBe(0);
   });
 
   it('waits for a price, and never sells more birds than are alive', () => {

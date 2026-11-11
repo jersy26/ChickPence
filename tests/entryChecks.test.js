@@ -16,7 +16,7 @@ const batch = { batch_id: 'b1', start_date: '2026-01-01', initial_chick_count: 1
 const mort = (id, date, count) => ({ mortality_id: id, batch_id: 'b1', entry_date: date, count, deleted_at: null });
 const sale = (id, date, qty, kg = 1, price = 100) => ({ sale_id: id, batch_id: 'b1', sale_date: date, quantity_sold: qty, weight_kg: kg, price_per_kg: price, deleted_at: null });
 
-describe('Birds left for a new or corrected death or sale', () => {
+describe('TC-U-06 / TC-U-08: Birds left for a new or corrected death or sale', () => {
   const deaths = [mort('m1', '2026-01-20', 100)];
   const sales = [sale('s1', '2026-02-08', 600)];
 
@@ -39,7 +39,7 @@ describe('Birds left for a new or corrected death or sale', () => {
   });
 });
 
-describe('Sale amount in whole centavos', () => {
+describe('TC-U-07: Sale amount in whole centavos', () => {
   it('1,260 kg at ₱95.00 = ₱119,700.00', () => {
     expect(saleAmountCentavos({ weight_kg: 1260, price_per_kg: 95 })).toBe(11970000);
   });
@@ -53,7 +53,7 @@ describe('Sale amount in whole centavos', () => {
     expect(calcBatchMetrics(batch, [], [stale], [], []).revenue).toBe(2000);
   });
 
-  it('sums decimal entries exactly: 3 sales of 0.1 kg at ₱0.10', () => {
+  it('TC-U-12: sums decimal entries exactly: 3 sales of 0.1 kg at ₱0.10', () => {
     const sales = [sale('a', '2026-02-01', 1, 0.1, 0.1), sale('b', '2026-02-02', 1, 0.1, 0.1), sale('c', '2026-02-03', 1, 0.1, 0.1)];
     const m = calcBatchMetrics({ ...batch, chick_cost: 0.3 }, [], sales, [], []);
     expect(m.revenue).toBe(0.03);
@@ -62,7 +62,7 @@ describe('Sale amount in whole centavos', () => {
   });
 });
 
-describe('Largest remainder tie-break', () => {
+describe('TC-U-03: Largest remainder tie-break', () => {
   it('a tied centavo goes to the batch that started earlier, whatever its id', () => {
     const split = largestRemainderSplit(1, [
       { batchId: 'batch-a', heads: 1, start: '2026-02-01' },

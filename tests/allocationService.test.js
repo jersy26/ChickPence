@@ -9,9 +9,13 @@ function fakeTx(tables) {
   };
   const store = Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, [...rows]]));
   const table = (name) => ({
+    toArray: async () => [...store[name]],
     filter: (fn) => ({ toArray: async () => store[name].filter(fn) }),
     where: (field) => ({
-      anyOf: (values) => ({ delete: async () => { store[name] = store[name].filter((r) => !values.includes(r[field])); } }),
+      anyOf: (values) => ({
+        toArray: async () => store[name].filter((r) => values.includes(r[field])),
+        delete: async () => { store[name] = store[name].filter((r) => !values.includes(r[field])); }
+      }),
       equals: (value) => ({ delete: async () => { store[name] = store[name].filter((r) => r[field] !== value); } })
     }),
     clear: async () => { store[name] = []; },
@@ -72,5 +76,28 @@ describe('recomputeAllocations', () => {
     await recomputeAllocations(tx, ['e1']);
     expect(rowsFor(tx, 'e1')).toEqual([]);
     expect(rowsFor(tx, 'e9')).toHaveLength(1); // other expenses are left as they are
+  });
+});
+
+// A backdated sale of b1's last birds, with no other batch on 2026-10-01
+describe('TC-I-15: a change that would leave a shared expense with no batch', () => {
+  const lone = [{ batch_id: 'b1', start_date: '2026-09-01', initial_chick_count: 300 }];
+  const lastSale = { sale_id: 's1', batch_id: 'b1', sale_date: '2026-09-20', quantity_sold: 300 };
+  const shared = [{ expense_id: 'e1', batch_id: 'b1', feed_centavos: 4000, other_centavos: 0 }];
+
+  it('is refused when the save asks to keep expenses shared', async () => {
+    const tx = fakeTx({ batches: lone, mortality_logs: [], sales: [lastSale], expenses: [expense('e1')], allocations: shared });
+    await expect(recomputeAllocations(tx, null, { keepShared: true })).rejects.toThrow('2026-10-01');
+  });
+
+  it('is not refused for an expense that already had no batch', async () => {
+    const tx = fakeTx({ batches: lone, mortality_logs: [], sales: [lastSale], expenses: [expense('e1')], allocations: [] });
+    await expect(recomputeAllocations(tx, null, { keepShared: true })).resolves.toBeUndefined();
+  });
+
+  it('a rebuild after a pull drops the shares instead of failing', async () => {
+    const tx = fakeTx({ batches: lone, mortality_logs: [], sales: [lastSale], expenses: [expense('e1')], allocations: shared });
+    await recomputeAllocations(tx);
+    expect(rowsFor(tx, 'e1')).toEqual([]);
   });
 });
