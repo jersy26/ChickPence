@@ -3372,24 +3372,11 @@ button.welcome-character .welcome-bubble {
   gap:20px
 }
 
-.dense-overview .home-date {
-  display:block;
-  font-size:12px;
-  font-weight:500;
-  color:#6B6457;
-  margin-bottom:4px
-}
-
 .dense-overview .greet-banner h1 {
   font-size:36px;
   line-height:1.13;
   letter-spacing:-.025em;
   margin:0
-}
-
-.dense-overview .greet-mood {
-  margin:8px 0 0;
-  font-size:14px
 }
 
 .dense-overview .home-hero .flock-primary {
@@ -4089,12 +4076,6 @@ button.welcome-character .welcome-bubble {
   .dense-overview .greet-banner h1 {
     font-size:28px;
     line-height:1.2
-  }
-  .dense-overview .home-date {
-    font-size:11px
-  }
-  .dense-overview .greet-mood {
-    font-size:12px
   }
   .dense-overview .rd-home-top,.rd-home-lower {
     grid-template-columns:minmax(0,1fr);
