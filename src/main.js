@@ -390,9 +390,10 @@ async function render() {
 
   } else if (state.view === 'summary') {
     const batchId = state.selectedBatchId;
-    const [batchData, closedBatchesData] = await Promise.all([
+    const [batchData, closedBatchesData, farmRecords] = await Promise.all([
       batchId ? Repository.getBatchFullDetails(batchId) : null,
-      Repository.getClosedBatchesWithData()
+      Repository.getClosedBatchesWithData(),
+      Repository.getFarmRecords()
     ]);
 
     const card = batchData?.batch
@@ -400,7 +401,7 @@ async function render() {
       : null;
     if (!isLatest()) return;
     state.insights = card && { scope: card.scope, facts: card.facts };
-    contentHtml = renderSummary(batchData, card?.insights ?? null);
+    contentHtml = renderSummary(batchData, card?.insights ?? null, { ...farmRecords, today: localToday() });
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render, openSync, changeRole);
     attachSummaryListeners(appContainer, navigate, batchData?.batch

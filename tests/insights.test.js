@@ -38,7 +38,7 @@ function batchData(id, name, { status = 'Closed', start, end = null, chicks = 10
     batch: { batch_id: id, batch_name: name, status, start_date: start, end_date: end, initial_chick_count: chicks, chick_cost: chickCost, mortality_threshold_pct: 5 },
     feed: [{ feed_log_id: `${id}-f`, batch_id: id, entry_date: start, quantity_g: feedKg * 1000 }],
     mortality: deaths.map(([entry_date, count], i) => ({ mortality_id: `${id}-m${i}`, batch_id: id, entry_date, count })),
-    sales: sales.map(([sale_date, quantity_sold, weight_kg, total_amount], i) => ({ sale_id: `${id}-s${i}`, batch_id: id, buyer_name: 'Aling Nena', sale_date, quantity_sold, weight_kg, total_amount })),
+    sales: sales.map(([sale_date, quantity_sold, weight_kg, total_amount], i) => ({ sale_id: `${id}-s${i}`, batch_id: id, buyer_name: 'Aling Nena', sale_date, quantity_sold, weight_kg, price_per_kg: total_amount / weight_kg, total_amount })),
     allocations: [{ expense_id: `${id}-e`, batch_id: id, feed_centavos: feedPeso * 100, other_centavos: otherPeso * 100 }]
   };
 }

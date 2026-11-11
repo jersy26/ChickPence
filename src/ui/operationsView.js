@@ -1,7 +1,7 @@
 import { escapeHtml as esc } from './html.js';
 import { calcBatchMetrics, evalMortalityWarning, liveHeadCount } from '../services/allocationEngine.js';
 import { batchPerformanceThrough } from '../services/pnlCalendar.js';
-import { formatPeso, formatDate, localToday, filterActive } from '../services/calculations.js';
+import { formatPeso, formatPercent, formatDate, localToday, filterActive } from '../services/calculations.js';
 import { daysBetween, addDays } from '../services/guidedQuestions.js';
 import { farmTabs, option, downloadFarmCsv } from './farmTable.js';
 import { header,empty,kpi,pill,table,quickButton,barChart,datePresets,presetRange } from './redesignKit.js';
@@ -30,7 +30,25 @@ export function renderOpenBatches(items,{selectedId,tab='Overview',role='owner',
 export function renderCompare(items,selectedIds=[]) {
  const selected=items.filter(i=>selectedIds.includes(i.batch.batch_id)).slice(0,4);
  const metrics=selected.map(i=>({item:i,m:calcBatchMetrics(i.batch,i.allocations,i.sales,i.mortality,i.feed)}));
- return `<section class="page-section">${header('Compare batches','Choose two to four batches to compare their recorded results.')}<div class="rd-panel"><div class="rd-batch-chips">${items.map(i=>`<label class="rd-check-chip"><input type="checkbox" data-compare-batch="${esc(i.batch.batch_id)}" ${selectedIds.includes(i.batch.batch_id)?'checked':''} ${selected.length>=4&&!selectedIds.includes(i.batch.batch_id)?'disabled':''}/>${esc(i.batch.batch_name)}</label>`).join('')}</div></div>${selected.length<2?empty('Which flocks will you compare?','Select at least two batches above.'): `<div class="rd-compare-grid">${[['Net profit','netProfit',true],['Margin (%)','margin',false],['Mortality (%)','mortalityRate',false],['Cost per kg','costPerKg',true]].map(([label,key,money])=>`<section class="rd-panel"><h2>${label}</h2>${barChart(metrics.map(({item,m})=>({label:item.batch.batch_name,value:typeof m[key]==='number'?m[key]:0})),{label,money})}</section>`).join('')}</div><div class="rd-panel">${table(['Batch','Net','Margin','Mortality','Cost / kg','Days to harvest'],metrics.map(({item,m})=>[esc(item.batch.batch_name),formatPeso(m.netProfit),`${(Number(m.margin)||0).toFixed(1)}%`,`${m.mortalityRate.toFixed(1)}%`,typeof m.costPerKg!=='number'?'—':formatPeso(m.costPerKg),String(daysBetween(item.batch.start_date,item.batch.end_date||localToday()))]))}<button type="button" class="btn-action" data-nav="nav:reports:breakdown">Why the difference?</button></div>`}</section>`;
+ // The same measures as each batch's summary (FR-20, AC-14), one column per batch
+ const na='<span class="text-mut">Not available</span>';
+ const peso=v=>typeof v==='number'?formatPeso(v):na, pct=v=>typeof v==='number'?formatPercent(v):na, ratio=v=>typeof v==='number'?v.toFixed(2):na;
+ const measures=[
+  ['Result',({item})=>item.batch.status==='Closed'?pill('Final','good'):pill('Provisional','watch')],
+  ['Total recorded cost',({m})=>peso(m.totalCost)],
+  ['Revenue',({m})=>peso(m.revenue)],
+  ['Net profit or loss',({m})=>peso(m.netProfit)],
+  ['Profit margin',({m})=>pct(m.margin)],
+  ['Cost per kg',({m})=>peso(m.costPerKg)],
+  ['Profit per kg',({m})=>peso(m.profitPerKg)],
+  ['Mortality rate',({m})=>pct(m.mortalityRate)],
+  ['Sales-based FCR',({m})=>ratio(m.fcr)],
+  ['Return on batch cost',({m})=>pct(m.robc)],
+  ['Days from start',({item})=>String(daysBetween(item.batch.start_date,item.batch.end_date||localToday()))]
+ ];
+ // A chart leaves out a batch whose value cannot be calculated instead of drawing it as zero
+ const chart=(label,key,money)=>{const rows=metrics.filter(({m})=>typeof m[key]==='number').map(({item,m})=>({label:item.batch.batch_name,value:m[key]}));return `<section class="rd-panel"><h2>${label}</h2>${rows.length?barChart(rows,{label,money}):`<p class="text-mut">Not available for these batches yet.</p>`}</section>`;};
+ return `<section class="page-section">${header('Compare batches','Choose two to four batches to compare their recorded results.')}<div class="rd-panel"><div class="rd-batch-chips">${items.map(i=>`<label class="rd-check-chip"><input type="checkbox" data-compare-batch="${esc(i.batch.batch_id)}" ${selectedIds.includes(i.batch.batch_id)?'checked':''} ${selected.length>=4&&!selectedIds.includes(i.batch.batch_id)?'disabled':''}/>${esc(i.batch.batch_name)}</label>`).join('')}</div></div>${selected.length<2?empty('Which flocks will you compare?','Select at least two batches above.'): `<div class="rd-panel">${table(['Measure',...metrics.map(({item})=>item.batch.batch_name)],measures.map(([label,cell])=>[esc(label),...metrics.map(cell)]))}<p class="farm-footnote">Provisional results can still change with each sale; compare final results for a fair reading.</p></div><div class="rd-compare-grid">${chart('Net profit','netProfit',true)}${chart('Profit margin (%)','margin',false)}${chart('Mortality rate (%)','mortalityRate',false)}${chart('Cost per kg','costPerKg',true)}</div><button type="button" class="btn-action" data-nav="nav:reports:breakdown">Why the difference?</button>`}</section>`;
 }
 function saleRows(items) {return items.flatMap(item=>filterActive(item.sales||[]).map(s=>({s,item}))).sort((a,b)=>b.s.sale_date.localeCompare(a.s.sale_date));}
 export function renderSales(items,closed,{history=false,filters={}}={}) {

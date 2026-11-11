@@ -3,8 +3,28 @@ import { syncEngine } from './syncEngine.js';
 import { DEMO_USER_ID } from '../db/seed.js';
 import { AuthService } from './auth.js';
 import { recomputeAllocations } from './allocationService.js';
-import { computeAllocationsForExpense } from './allocationEngine.js';
+import { computeAllocationsForExpense, remainingBirds, saleAmountCentavos } from './allocationEngine.js';
 import { localToday } from './calculations.js';
+
+/** The batch an entry belongs to. Refuses an entry with no batch or dated before the batch started. */
+async function batchForEntry(batchId, date) {
+  const batch = batchId ? await db.batches.get(batchId) : null;
+  if (!batch || batch.deleted_at) throw new Error('Choose a batch for this entry.');
+  if (!date) throw new Error('Enter the date of this entry.');
+  if (date < batch.start_date) {
+    throw new Error(`${batch.batch_name} started on ${batch.start_date}, so this entry cannot be dated ${date}.`);
+  }
+  return batch;
+}
+
+/** Birds the batch has left once its other deaths and sales are taken off (the entry being edited excluded). */
+async function birdsLeft(batch, exclude) {
+  const [mortality, sales] = await Promise.all([
+    db.mortality_logs.where('batch_id').equals(batch.batch_id).toArray(),
+    db.sales.where('batch_id').equals(batch.batch_id).toArray()
+  ]);
+  return remainingBirds(batch, mortality, sales, exclude);
+}
 
 /** A record's table, the outbox, and every table cost sharing reads or writes. */
 const changeTables = (tableName) =>
@@ -86,6 +106,17 @@ export const Repository = {
     ]);
 
     return { batch, feed, mortality, sales, allocations };
+  },
+
+  /** Every non-deleted batch, death, sale and expense: what cost sharing is computed from. */
+  async getFarmRecords() {
+    const [batches, mortality, sales, expenses] = await Promise.all([
+      db.batches.filter((b) => !b.deleted_at).toArray(),
+      db.mortality_logs.filter((m) => !m.deleted_at).toArray(),
+      db.sales.filter((s) => !s.deleted_at).toArray(),
+      db.expenses.filter((e) => !e.deleted_at).toArray()
+    ]);
+    return { batches, mortality, sales, expenses };
   },
 
   async getClosedBatchesWithData() {
@@ -194,6 +225,9 @@ export const Repository = {
     const feedPeso = Number(expense.feed_amount) || 0;
     const otherPeso = Number(expense.other_amount) || 0;
 
+    if (feedPeso < 0 || otherPeso < 0) {
+      throw new Error('Costs cannot be negative. To undo a cost, edit or delete its entry.');
+    }
     if (feedPeso === 0 && otherPeso === 0) {
       throw new Error('At least one of Feed or Other costs must be greater than zero.');
     }
@@ -246,6 +280,8 @@ export const Repository = {
     // UI accepts quantity in kg; stored as integer grams (quantity_g) to satisfy
     // the integer-only precision requirement (NFR-04 / Table 15).
     const kgInput = Number(log.quantity_kg) || 0;
+    if (!(kgInput > 0)) throw new Error('Enter the feed used, in kilograms, above zero.');
+    await batchForEntry(log.batch_id, log.entry_date);
     const record = {
       feed_log_id: log.feed_log_id || crypto.randomUUID(),
       batch_id: log.batch_id,
@@ -262,11 +298,20 @@ export const Repository = {
   // ---------------------------------------------------------------------------
 
   async saveMortalityLog(log) {
+    // Zero is allowed: it records a day that was checked and had no deaths
+    const count = Number(log.count) || 0;
+    if (!Number.isInteger(count) || count < 0) throw new Error('Enter the number of deaths as a whole number, 0 or more.');
+    const batch = await batchForEntry(log.batch_id, log.entry_date);
+    const left = await birdsLeft(batch, { mortalityId: log.mortality_id });
+    if (count > left) {
+      throw new Error(`${batch.batch_name} has only ${left.toLocaleString()} birds left after its other deaths and sales, so ${count.toLocaleString()} deaths is too many.`);
+    }
+
     const record = {
       mortality_id: log.mortality_id || crypto.randomUUID(),
       batch_id: log.batch_id,
       entry_date: log.entry_date,
-      count: Number(log.count) || 0,
+      count,
       updated_at: new Date().toISOString(),
       deleted_at: null
     };
@@ -283,7 +328,15 @@ export const Repository = {
     const qty = Number(sale.quantity_sold) || 0;
     const kg = Number(sale.weight_kg) || 0;
     const ppk = Number(sale.price_per_kg) || 0;
-    const total = +(kg * ppk).toFixed(2);
+    if (!Number.isInteger(qty) || qty <= 0) throw new Error('Enter the number of birds sold as a whole number above zero.');
+    if (!(kg > 0) || !(ppk > 0)) throw new Error('Enter the total live weight and the price per kg, both above zero.');
+    const batch = await batchForEntry(sale.batch_id, sale.sale_date);
+    const left = await birdsLeft(batch, { saleId: sale.sale_id });
+    if (qty > left) {
+      throw new Error(`${batch.batch_name} has only ${left.toLocaleString()} birds left after its other deaths and sales, so ${qty.toLocaleString()} birds cannot be sold.`);
+    }
+    // Recalculated from weight and price on every save, never typed in
+    const total = saleAmountCentavos({ weight_kg: kg, price_per_kg: ppk }) / 100;
 
     const record = {
       sale_id: sale.sale_id || crypto.randomUUID(),

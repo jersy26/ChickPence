@@ -47,10 +47,14 @@ export const formatPeso = (val) => {
 /** Format peso from integer centavos. */
 export const formatPesoCentavos = (centavos) => formatPeso((Number(centavos) || 0) / 100);
 
+/** Shown wherever a measure cannot be calculated (a zero denominator, FR-16). */
+export const NOT_AVAILABLE = 'Not available';
+
+/** Percentages to two decimals, rounded for display only (Table 16 note). */
 export const formatPercent = (val) => {
-  if (val === 'N/A') return 'N/A';
+  if (val === 'N/A') return NOT_AVAILABLE;
   const n = Number(val) || 0;
-  return `${n.toFixed(1)}%`;
+  return `${n.toFixed(2)}%`;
 };
 
 export const formatNumber = (val, decimals = 2) => {

@@ -54,7 +54,7 @@ export function renderHistory(batchesWithFullData, searchQuery = '', statusFilte
 
         const marginDisplay = isClosed && margin !== 'N/A'
           ? formatPercent(margin)
-          : `<span class="text-mut">${isClosed ? 'N/A' : '—'}</span>`;
+          : `<span class="text-mut">${isClosed ? 'Not available' : '—'}</span>`;
 
         const statusBadge = batch.status === 'Open'
           ? `<span class="badge-pill status-open">Open</span>`
