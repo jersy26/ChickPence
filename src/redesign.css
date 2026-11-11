@@ -3506,12 +3506,6 @@ button.welcome-character .welcome-bubble {
   border-color:#2B2A26
 }
 
-.dense-overview .rd-companion-copy #btn-mood-why {
-  background:#F4EEE1;
-  color:#2B2A26;
-  border-color:#F4EEE1
-}
-
 .dense-overview .rd-companion-kpis {
   grid-template-columns:repeat(3,minmax(0,1fr));
   gap:8px;
@@ -4581,4 +4575,31 @@ button.welcome-character .welcome-bubble {
 .rd-hover-option.active {
   background:#F7DF8A;
   font-weight:600
+}
+
+.rd-companion-copy .rd-companion-cta {
+  justify-content:center;
+  margin-top:4px
+}
+
+.rd-companion-copy .rd-companion-cta>.btn-action.primary {
+  min-width:min(100%,240px);
+  min-height:52px;
+  padding:14px 32px;
+  font-size:15px;
+  justify-content:center
+}
+
+.rd-companion.flock-companion[data-mood="alerted"] {
+  background:linear-gradient(135deg,#F8D3C6 0%,#FBE6DE 45%,#FFF8F4 100%);
+  border-color:#E9AF9C
+}
+
+.rd-companion.flock-companion .companion-touch {
+  aspect-ratio:auto
+}
+
+.rd-companion .companion-touch-hint {
+  position:static;
+  margin-top:6px
 }
