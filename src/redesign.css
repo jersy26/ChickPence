@@ -3951,15 +3951,15 @@ button.welcome-character .welcome-bubble {
 }
 
 .home-flock-money dt {
-  font-size:8px;
+  font-size:10px;
   text-transform:uppercase;
   letter-spacing:.04em;
   color:#6B6457
 }
 
 .home-flock-money dd {
-  font-size:12px;
-  line-height:1.4;
+  font-size:18px;
+  line-height:1.3;
   font-weight:700;
   margin:3px 0 0;
   overflow-wrap:normal
@@ -3997,6 +3997,64 @@ button.welcome-character .welcome-bubble {
 
 .home-age-track.near-target i {
   background:#C99015
+}
+
+.home-flock-card.card-overdue {
+  background:#FEF0EE
+}
+
+.home-flock-card.card-near-target {
+  background:#FEF9EC
+}
+
+.home-flock-card.card-overdue .home-flock-money {
+  border-top-color:#EDBBAF
+}
+
+.home-flock-card.card-overdue .home-flock-hero-divider {
+  background:#EDBBAF
+}
+
+.home-flock-hero {
+  display:flex;
+  align-items:center;
+  gap:16px;
+  margin:10px 0 0
+}
+
+.home-flock-hero-stat {
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  flex:1
+}
+
+.home-flock-hero-divider {
+  width:1px;
+  height:36px;
+  background:#E9E0CD;
+  flex-shrink:0
+}
+
+.home-flock-big-num {
+  font-size:26px;
+  font-weight:700;
+  line-height:1.1;
+  color:#2B2A26
+}
+
+.home-flock-big-label {
+  font-size:10px;
+  color:#6B6457;
+  line-height:1.4
+}
+
+.home-flock-big-num.text-bad {
+  color:#9A3A26
+}
+
+.home-flock-hero+.home-flock-meta {
+  margin:8px 0 4px
 }
 
 .dense-overview .pnl-calendar-host {
@@ -4270,10 +4328,10 @@ button.welcome-character .welcome-bubble {
     min-width:80px
   }
   .home-flock-money dt {
-    font-size:10px
+    font-size:11px
   }
   .home-flock-money dd {
-    font-size:15px
+    font-size:19px
   }
   .dense-overview .performance-kpis {
     grid-template-columns:repeat(2,minmax(0,1fr));
