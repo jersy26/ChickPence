@@ -17,7 +17,7 @@ export function renderCompanion(mascot, items, { staff = false, financialHtml = 
   const target = mood === 'alerted' ? 'health' : mood === 'sad' ? 'calendar' : 'todo';
   return `<section class="flock-companion rd-companion" aria-labelledby="companion-title" data-mood="${mood}">
     <button type="button" class="companion-touch" id="btn-greet-flock" aria-label="Say hello to your chicken">${companionArt({...mascot,mood})}<span class="companion-touch-hint">Tap to say hello</span></button>
-    <div class="rd-companion-copy"><span class="rd-pill ${mood === 'alerted'?'urgent':mood==='happy'?'good':mood==='sad'?'info':'watch'}">${mood[0].toUpperCase()+mood.slice(1)}</span><h2 id="companion-title">${labels[mood] || 'Growing with you'}</h2><p id="companion-message" aria-live="polite">${escapeHtml(reason)}</p><div class="rd-action-row rd-companion-cta"><button type="button" class="btn-action primary" data-nav="nav:home:${target}">${action}</button></div>${financialHtml}</div>
+    <div class="rd-companion-copy"><h2 id="companion-title">${labels[mood] || 'Growing with you'}</h2><p id="companion-message" aria-live="polite">${escapeHtml(reason)}</p><div class="rd-action-row rd-companion-cta"><button type="button" class="btn-action primary" data-nav="nav:home:${target}">${action}</button></div>${financialHtml}</div>
   </section>`;
 }
 

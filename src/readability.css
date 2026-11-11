@@ -1,0 +1,149 @@
+/*
+ * Readability: a size floor and darker secondary text across every page.
+ * Optima and its Windows stand-in Candara read smaller than Poppins at the
+ * same pixel size, so body text sits at 15px and no running label goes below
+ * 13px. Secondary grey moves from #6B6457 (5.3:1 on cream) to #544D41
+ * (about 7.5:1). Loaded last, after font-optima.css; .cp-app in front of each
+ * selector lets these win over the older, narrower media-query sizes.
+ */
+:root {
+  --mut:#544D41;
+  --read-small:13px;
+  --read-body:15px
+}
+
+/* Running text */
+.cp-app,.cp-app p,.cp-app li,.cp-app td,.cp-app dd,.cp-app input,.cp-app select,.cp-app textarea,dialog,dialog p,dialog input,dialog select,dialog textarea {
+  font-size:max(var(--read-body),1em);
+  line-height:1.55
+}
+
+.cp-app td,.cp-app .farm-data-table td,.cp-app table td {
+  font-size:14px
+}
+
+/* Secondary text: one floor, one darker grey */
+.cp-app .text-mut,
+.cp-app .page-head p,
+.cp-app small,
+.cp-app label,
+.cp-app th,
+.cp-app dt,
+.cp-app .farm-time,
+.cp-app .farm-footnote,
+.cp-app .farm-table-context,
+.cp-app .home-flock-meta,
+.cp-app .home-health-metric>div:first-child,
+.cp-app .home-health-metric>small,
+.cp-app .home-flock-money dt,
+.cp-app .rd-insight-progress,
+.cp-app .gq-legend span,
+.cp-app .gq-meaning,
+.cp-app .companion-touch-hint,
+.cp-app .cp-crumb span,
+.cp-app .todo-count,
+.cp-app .cp-sub,
+.cp-app .rd-closed-totals {
+  font-size:var(--read-small);
+  line-height:1.45
+}
+
+.cp-app .text-mut,
+.cp-app .page-head p,
+.cp-app th,
+.cp-app .farm-time,
+.cp-app .farm-footnote,
+.cp-app .farm-table-context,
+.cp-app .home-flock-meta,
+.cp-app .home-flock-money dt,
+.cp-app .rd-insight-progress,
+.cp-app .gq-legend span,
+.cp-app .companion-touch-hint,
+.cp-app .cp-crumb span,
+.cp-app .farm-filterbar label,
+.cp-app .rd-kpi:not(.urgent):not(.good):not(.warm) span,
+.cp-app .rd-kpi:not(.urgent):not(.good):not(.warm) small,
+.cp-app .todo-list small,
+.cp-app .rd-closed-totals {
+  color:var(--mut)
+}
+
+/* Tile labels and figures */
+.cp-app .rd-kpi span,.cp-app .rd-kpi small,.cp-app .rd-companion-kpis span,.cp-app .rd-companion-kpis small {
+  font-size:var(--read-small)
+}
+
+.cp-app .home-flock-money dt {
+  letter-spacing:.02em
+}
+
+.cp-app .home-flock-money dd,.cp-app .home-health-metric b {
+  font-size:15px
+}
+
+/* To-do rows */
+.cp-app .todo-list b {
+  font-size:14px
+}
+
+/* Buttons, tabs, chips, pills */
+.cp-app .btn-action,.cp-app .flock-primary,.cp-app .chip-filter,.cp-app .farm-tabs button,.cp-app .tab-nav button,.cp-app .rd-check-chip,.cp-app .btn-link {
+  font-size:14px
+}
+
+.cp-app .rd-pill,.cp-app .farm-status,.cp-app .status-pill,.cp-app .log-type,.cp-app .badge-pill {
+  font-size:var(--read-small);
+  line-height:1.3
+}
+
+/* Sidebar and top bar */
+.cp-app .cp-group-btn {
+  font-size:15px;
+  color:#2F2C25
+}
+
+.cp-app .cp-crumb b {
+  font-size:15px
+}
+
+/*
+ * Spots held small by narrower rules (Home tiles, to-do rows, batch cards,
+ * meters, pagination, the sync chip). The doubled .cp-app raises these
+ * above those rules without !important.
+ */
+.cp-app.cp-app .rd-companion-kpis .rd-kpi span,
+.cp-app.cp-app .rd-companion-kpis .rd-kpi small,
+.cp-app.cp-app .todo-list small,
+.cp-app.cp-app .home-flock-card .rd-pill,
+.cp-app.cp-app .rd-health-strip span,
+.cp-app.cp-app .farm-pagination span,
+.cp-app.cp-app .cp-sync,
+.cp-app.cp-app .cp-sync span {
+  font-size:var(--read-small)
+}
+
+.cp-app.cp-app .todo-list b,
+.cp-app.cp-app .todo-list .btn-action,
+.cp-app.cp-app .btn-link,
+.cp-app #btn-gq-toggle,
+.cp-app.cp-app .home-hero .flock-primary,
+.cp-app.cp-app .page-head p.text-mut,
+.cp-app.cp-app .rd-bar-row span,
+.cp-app.cp-app .rd-bar-row b {
+  font-size:14px
+}
+
+.cp-app.cp-app .todo-list small,
+.cp-app.cp-app .rd-health-strip span {
+  color:var(--mut)
+}
+
+/* Phones keep the same floor; only headings scale down */
+@media (max-width:600px) {
+  .cp-app,.cp-app p,.cp-app li,.cp-app dd {
+    font-size:15px
+  }
+  .cp-app .companion-touch-hint {
+    font-size:var(--read-small)
+  }
+}

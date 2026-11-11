@@ -10,6 +10,8 @@ import { formatPeso } from './services/calculations.js';
 import { pnlForMonth } from './services/pnlCalendar.js';
 import './style.css';
 import './redesign.css';
+import './font-optima.css';
+import './readability.css';
 import { AuthService } from './services/auth.js';
 import { Repository } from './services/repository.js';
 import { prepareLocalDataFor } from './db/localData.js';

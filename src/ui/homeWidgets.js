@@ -48,7 +48,7 @@ export function renderGuidedCards(allCards = [], { expanded = false, role = 'own
     : '';
   const legend = shown.length ? `<p class="gq-legend">${[...new Set(shown.map((c) => c.tone))].map((t) => `<span class="tone-${t}">${TONE_WORD[t]}</span>`).join('')}</p>` : '';
   return `<section class="gq-section" id="home-insights" aria-labelledby="gq-title">
-    <div class="flock-panel-heading"><div><h2 id="gq-title">Daily Insights</h2><p class="flock-panel-caption">${role === 'staff' ? 'My tasks for today.' : 'Key figures from your farm records, updated daily. Select a card for the full breakdown.'}</p>${legend}</div><span class="rd-insight-progress">${seen.filter(id=>cards.some(c=>c.id===id)).length} of ${cards.length} reviewed</span>${more}</div>
+    <div class="flock-panel-heading"><div><h2 id="gq-title">Daily Insights</h2>${legend}</div><span class="rd-insight-progress">${seen.filter(id=>cards.some(c=>c.id===id)).length} of ${cards.length} reviewed</span>${more}</div>
     ${body}
   </section>`;
 }
@@ -122,7 +122,7 @@ export function renderTodo(result, { compact = false } = {}) {
     </li>`;
   }).join('');
   return `<section class="todo-section" id="home-todo" aria-labelledby="todo-title">
-    <div class="flock-panel-heading"><div><h2 id="todo-title">To-do list</h2><p class="flock-panel-caption">Ticks itself when the entry is saved.</p></div><span class="todo-count ${result.overdue ? 'bad' : ''}">${result.done} of ${result.total} done${result.overdue ? ` · ${result.overdue} overdue` : ''}</span></div>
+    <div class="flock-panel-heading"><div><h2 id="todo-title">To-do list</h2></div><span class="todo-count ${result.overdue ? 'bad' : ''}">${result.done} of ${result.total} done${result.overdue ? ` · ${result.overdue} overdue` : ''}</span></div>
     <div class="todo-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Tasks done today"><i style="width:${pct}%"></i></div>
     <ul class="todo-list">${rows}</ul>
   </section>`;
@@ -139,5 +139,5 @@ function greetingFor(date = new Date()) {
 }
 
 export function renderGreeting(user, mascot, targetDays, now = new Date()) {
-  return `<header class="greet-banner"><div><span class="home-date">${now.toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</span><h1>${greetingFor(now)}, ${escapeHtml(userDisplayName(user))}.</h1><p class="greet-mood">A new day. A little care. A growing flock.</p></div></header>`;
+  return `<header class="greet-banner"><div><h1>${greetingFor(now)}, ${escapeHtml(userDisplayName(user))}.</h1></div></header>`;
 }
