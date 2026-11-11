@@ -16,17 +16,17 @@ import { can } from '../services/permissions.js';
  *   planned  id of a planned page (see plannedView.js)
  *   action   special action instead of a page (export)
  *   perm     permission needed (permissions.js)
+ *   labs     device-only or planned page, in the menu only when VITE_LABS=true
  */
+
+/** Unfinished pages stay out of the menu unless the build turns them on. */
+export const LABS = import.meta.env?.VITE_LABS === 'true';
 export const NAV = [
   {
     key: 'home', label: 'Home', icon: 'home',
     subs: [
       { key: 'home:overview', label: 'Overview', view: 'dashboard' },
-      { key: 'home:insights', label: 'Today’s Questions', view: 'dashboard', anchor: 'home-insights' },
-      { key: 'home:health', label: 'Flock health', view: 'dashboard', anchor: 'home-health' },
-      { key: 'home:performance', label: 'Performance', view: 'dashboard', anchor: 'home-performance', perm: 'report.view' },
-      { key: 'home:todo', label: 'To-do list', view: 'dashboard', anchor: 'home-todo' },
-      { key: 'home:calendar', label: 'Profit calendar', view: 'dashboard', anchor: 'pnl-calendar-host', perm: 'report.view' }
+      { key: 'home:insights', label: 'Today’s Questions', view: 'dashboard', anchor: 'home-insights', hidden: true }
     ]
   },
   {
@@ -43,12 +43,12 @@ export const NAV = [
       { key: 'sales:record', label: 'Record a sale', view: 'sales-record', perm: 'sale.record' },
       { key: 'sales:price', label: 'Price check', view: 'price-check', perm: 'sale.price' },
       { key: 'sales:history', label: 'Sales history', view: 'sales-history', perm: 'sale.record' },
-      { key: 'sales:buyers', label: 'Buyers / Markets', view: 'planned', planned: 'buyers', perm: 'sale.buyers' }
+      { key: 'sales:buyers', label: 'Buyers / Markets', view: 'planned', planned: 'buyers', perm: 'sale.buyers', labs: true }
     ]
   },
   { key: 'costs', label: 'Costs', icon: 'costs', perm: 'report.view', subs: [
     { key: 'costs:daily', label: 'Daily expenses', view: 'costs' },
-    { key: 'costs:recurring', label: 'Recurring costs', view: 'costs' },
+    { key: 'costs:recurring', label: 'Recurring costs', view: 'costs', labs: true },
     { key: 'costs:sharing', label: 'Cost sharing', view: 'costs' }
   ] },
   {
@@ -57,32 +57,31 @@ export const NAV = [
       { key: 'logbook:daily', label: 'Daily entry', view: 'daily-entry' },
       { key: 'logbook:waiting', label: 'Waiting to upload', view: 'logbook' },
       { key: 'logbook:all', label: 'All entries', view: 'logbook' },
-      { key: 'logbook:corrections', label: 'Correction requests', view: 'corrections' },
-      { key: 'logbook:concerns', label: 'My concerns', view: 'concerns', staffOnly: true }
+      { key: 'logbook:corrections', label: 'Correction requests', view: 'corrections', labs: true },
+      { key: 'logbook:concerns', label: 'My concerns', view: 'concerns', staffOnly: true, labs: true }
     ]
   },
   {
     key: 'team', label: 'Team', icon: 'team', perm: 'team.board',
     subs: [
       { key: 'team:tasks', label: 'Task board', view: 'team' },
-      { key: 'team:approvals', label: 'Approvals', view: 'approvals', perm: 'approve.requests' },
       { key: 'team:activity', label: 'Activity', view: 'team-activity' },
-      { key: 'team:concerns', label: 'Concerns', view: 'concerns' },
-      { key: 'team:payroll', label: 'Payroll', view: 'planned', planned: 'payroll', perm: 'pay.run' }
+      { key: 'team:concerns', label: 'Concerns', view: 'concerns', labs: true },
+      { key: 'team:payroll', label: 'Payroll', view: 'planned', planned: 'payroll', perm: 'pay.run', labs: true }
     ]
   },
   {
     key: 'reports', label: 'Reports', icon: 'reports', perm: 'report.view',
     subs: [
       { key: 'reports:summaries', label: 'Reports', view: 'reports' },
-      { key: 'reports:breakdown', label: 'Profit breakdown', view: 'reports', hidden: true }
+      { key: 'reports:breakdown', label: 'Profit breakdown', view: 'reports', hidden: true, labs: true }
     ]
   },
   {
     key: 'users', label: 'User Management', icon: 'users', perm: 'team.staff',
     subs: [
-      { key: 'users:list', label: 'Users', view: 'users' },
-      { key: 'users:roles', label: 'Roles', view: 'roles' }
+      { key: 'users:list', label: 'Users', view: 'users', labs: true },
+      { key: 'users:roles', label: 'Roles', view: 'roles', labs: true }
     ]
   },
   {
@@ -98,10 +97,10 @@ export const NAV = [
 const ALL_SUBS = NAV.flatMap((g) => g.subs.map((s) => ({ ...s, group: g.key })));
 
 /** The menu a role may see: groups and subtabs it has no permission for are left out. */
-export function navForRole(role) {
+export function navForRole(role, labs = LABS) {
   return NAV
     .filter((g) => !g.perm || can(role, g.perm))
-    .map((g) => ({ ...g, subs: g.subs.filter((s) => (!s.staffOnly || role==='staff') && (!s.perm || can(role, s.perm))).map(s=>role==='staff'&&s.key==='logbook:all'?{...s,label:'My entries'}:s) }))
+    .map((g) => ({ ...g, subs: g.subs.filter((s) => (labs || !s.labs) && (!s.staffOnly || role==='staff') && (!s.perm || can(role, s.perm))).map(s=>role==='staff'&&s.key==='logbook:all'?{...s,label:'My entries'}:s) }))
     .filter((g) => g.subs.length);
 }
 
@@ -113,6 +112,7 @@ export function findSub(key) {
 export function defaultSubFor(view, { tab, status, planned } = {}) {
   if (view === 'batches') return 'batches:open';
   if (view === 'history' || view === 'summary') return status === 'Closed' ? 'batches:closed' : 'batches:compare';
+  if (view === 'approvals') return 'logbook:corrections';
   if (view === 'planned') return ALL_SUBS.find((s) => s.planned === planned)?.key || 'home:overview';
   return ALL_SUBS.find((s) => s.view === view)?.key || 'home:overview';
 }

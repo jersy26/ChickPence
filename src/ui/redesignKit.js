@@ -11,8 +11,8 @@ export const moneyCompact = (value,digits) => {
  return Math.abs(value)<10000?formatPeso(value):new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',notation:'compact',maximumFractionDigits:places}).format(value);
 };
 
-export function table(headers,rows,footer='') {
- return `<div class="farm-table-surface"><table class="farm-data-table"><thead><tr>${headers.map(h=>`<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map((v,i)=>`<td data-label="${esc(headers[i])}">${v}</td>`).join('')}</tr>`).join('')}</tbody>${footer?`<tfoot>${footer}</tfoot>`:''}</table></div>`;
+export function table(headers,rows,footer='',className='') {
+ return `<div class="farm-table-surface"><table class="farm-data-table ${className}"><thead><tr>${headers.map(h=>`<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map((v,i)=>`<td data-label="${esc(headers[i])}">${v}</td>`).join('')}</tr>`).join('')}</tbody>${footer?`<tfoot>${footer}</tfoot>`:''}</table></div>`;
 }
 export function barChart(rows,{label='Recorded values',money=false}={}) {
  const max=Math.max(...rows.map(r=>Math.abs(r.value)),1);

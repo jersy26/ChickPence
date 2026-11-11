@@ -52,9 +52,11 @@ export function renderSidebar(navKey, role) {
   const activeGroup = navKey.split(':')[0];
   const groups = navForRole(role).map((g) => {
     const open = g.key === activeGroup;
-    const subs = g.subs.filter(s=>!s.hidden && g.key!=='reports').map((s) => `<button type="button" class="cp-sub ${s.key === navKey ? 'active' : ''}" data-nav="nav:${s.key}" ${s.key === navKey ? 'aria-current="page"' : ''}>${escapeHtml(s.label)}${s.key==='team:approvals'&&shellContext.notifications.some(n=>n.group==='Approvals')?`<span class="rd-pill watch">${shellContext.notifications.find(n=>n.group==='Approvals').count}</span>`:''}${s.planned ? '<i class="cp-soon">soon</i>' : ''}</button>`).join('');
+    const visible = g.subs.filter(s=>!s.hidden);
+    // A group with one page is a plain link, not a one-item submenu
+    const subs = (visible.length > 1 ? visible : []).map((s) => `<button type="button" class="cp-sub ${s.key === navKey ? 'active' : ''}" data-nav="nav:${s.key}" ${s.key === navKey ? 'aria-current="page"' : ''}>${escapeHtml(s.label)}${s.key==='logbook:corrections'&&shellContext.notifications.some(n=>n.group==='Approvals')?`<span class="rd-pill watch">${shellContext.notifications.find(n=>n.group==='Approvals').count}</span>`:''}${s.planned ? '<i class="cp-soon">soon</i>' : ''}</button>`).join('');
     return `<div class="cp-group ${open ? 'open' : ''}">
-      <button type="button" class="cp-group-btn ${open ? 'active' : ''}" data-nav="nav:${g.subs[0].key}" aria-expanded="${open}">${ICONS[g.icon]}<span>${escapeHtml(g.label)}</span>${ICONS.chevron}</button>
+      <button type="button" class="cp-group-btn ${open ? 'active' : ''}" data-nav="nav:${g.subs[0].key}" aria-expanded="${open}">${ICONS[g.icon]}<span>${escapeHtml(g.label)}</span>${subs ? ICONS.chevron : ''}</button>
       <div class="cp-subs">${subs}</div>
     </div>`;
   }).join('');
@@ -103,7 +105,7 @@ export function renderShell(activeView, contentHtml, syncStatus) {
         <nav class="rd-phone-links" aria-label="Staff pages">${navForRole(r).filter(g=>['home','batches','logbook','settings'].includes(g.key)).map(g=>`<button type="button" class="${g.key===navKey.split(':')[0]?'active':''}" data-nav="nav:${g.subs[0].key}">${g.label}</button>`).join('')}</nav>
         ${user?.isDemo && !sessionStorage.getItem('cp-demo-note-dismissed') ? '<div class="rd-demo-note"><span>Demo mode: changes are saved on this device.</span><button type="button" id="dismiss-demo-note" class="cp-icon-btn" aria-label="Dismiss demo note">×</button></div>':''}
         ${contentHtml}
-        ${renderChickCount()}
+        ${import.meta.env.VITE_CHICKCOUNT_API_URL ? renderChickCount() : ''}
       </main>
     </div>
   `;

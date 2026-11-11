@@ -15,7 +15,7 @@ import { Repository } from './services/repository.js';
 import { prepareLocalDataFor } from './db/localData.js';
 import { syncEngine } from './services/syncEngine.js';
 import { renderShell, attachShellListeners, renderSyncStatus, setShellContext } from './ui/shell.js';
-import { findSub, defaultSubFor, navForRole } from './ui/navigation.js';
+import { findSub, defaultSubFor, navForRole, LABS } from './ui/navigation.js';
 import { renderGuidedCards, openAnswerModal, renderTodo, renderTaskTracker, mascotState, renderGreeting } from './ui/homeWidgets.js';
 import { buildLogRows, renderLogbook, attachLogbookListeners } from './ui/logbookView.js';
 import { renderReports, attachReports } from './ui/reportsView.js';
@@ -536,7 +536,7 @@ async function loadHomeModel() {
 function notificationsFrom(home) {
   const alerts=home.cards.filter(c=>c.tone==='bad'||c.tone==='warn').map(c=>({group:'Alerts',tone:c.tone,title:c.question,text:`${c.value} · ${c.meaning}`,nav:'nav:home:insights'}));
   const tasks=home.tasks.tasks.filter(t=>t.overdue).map(t=>({group:'Tasks',tone:'warn',title:t.label,text:`Overdue · due ${t.due}`,nav:'nav:logbook:daily'}));
-  const reviews=state.role!=='staff'&&home.pendingReviews?[{group:'Approvals',count:home.pendingReviews,tone:'warn',title:`${home.pendingReviews} waiting for approval`,text:'Review farm record corrections.',nav:'nav:team:approvals'}]:[];
+  const reviews=LABS&&state.role!=='staff'&&home.pendingReviews?[{group:'Approvals',count:home.pendingReviews,tone:'warn',title:`${home.pendingReviews} waiting for approval`,text:'Review farm record corrections.',nav:'nav:logbook:corrections'}]:[];
   return [...alerts,...reviews,...tasks];
 }
 

@@ -59,10 +59,11 @@ describe('navigation by role', () => {
   });
 
   it('keeps payroll for the owner only', () => {
-    const subs = (role) => navForRole(role).flatMap((g) => g.subs.map((s) => s.key));
+    const subs = (role) => navForRole(role, true).flatMap((g) => g.subs.map((s) => s.key));
     expect(subs('owner')).toContain('team:payroll');
     expect(subs('admin')).not.toContain('team:payroll');
-    expect(subs('admin')).toContain('team:approvals');
+    expect(subs('admin')).toContain('logbook:corrections');
+    expect(defaultSubFor('approvals')).toBe('logbook:corrections');
   });
 
   it('maps pages opened by buttons back to a subtab', () => {

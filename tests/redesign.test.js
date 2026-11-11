@@ -26,7 +26,13 @@ describe('redesigned role and preview boundaries',()=>{
  it('shows exactly four staff sections and keeps Data & sync Owner-only',()=>{
   expect(navForRole('staff').map(g=>g.key)).toEqual(['home','batches','logbook','settings']);
   expect(navForRole('admin').find(g=>g.key==='settings').subs.map(s=>s.key)).not.toContain('settings:data');
-  expect(navForRole('owner').map(g=>g.key)).toHaveLength(9);
+  expect(navForRole('owner',true).map(g=>g.key)).toHaveLength(9);
+ });
+ it('keeps device-only and planned pages out of the menu unless Labs is on',()=>{
+  const subs=(role,labs)=>navForRole(role,labs).flatMap(g=>g.subs.map(s=>s.key));
+  for(const key of ['team:concerns','logbook:corrections','users:list','users:roles','costs:recurring','team:payroll','reports:breakdown'])expect(subs('owner',false)).not.toContain(key);
+  expect(navForRole('owner',false).map(g=>g.key)).not.toContain('users');
+  expect(subs('owner',true)).toContain('logbook:corrections');
  });
  it('hides money and sales from staff batches by default',()=>{
   const html=renderOpenBatches([item],{role:'staff'});

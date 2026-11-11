@@ -23,7 +23,7 @@ describe('device-only concern board',()=>{
  it('limits the staff list to their own concerns, without broadening the four-section menu',()=>{
   expect(visibleConcerns(sampleConcerns(),'staff','u-ana')).toHaveLength(2);
   expect(visibleConcerns(sampleConcerns(),'staff','unknown')).toEqual([]);
-  const nav=navForRole('staff');expect(nav).toHaveLength(4);expect(nav.find(g=>g.key==='logbook').subs.some(s=>s.view==='concerns')).toBe(true);expect(nav.some(g=>g.key==='team')).toBe(false);
+  const nav=navForRole('staff',true);expect(nav).toHaveLength(4);expect(nav.find(g=>g.key==='logbook').subs.some(s=>s.view==='concerns')).toBe(true);expect(nav.some(g=>g.key==='team')).toBe(false);
  });
  it('adds a reply without mutating the source concern and rejects other staff authors',()=>{
   const c=createConcern(input,{actor:staff,batches});const next=addConcernReply(c,'Checked the water line.',staff);
