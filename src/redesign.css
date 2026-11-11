@@ -4595,6 +4595,18 @@ button.welcome-character .welcome-bubble {
   border-color:#E9AF9C
 }
 
+.rd-companion.flock-companion[data-mood="alerted"] .rd-companion-cta>.btn-action.primary {
+  background:#C6432B;
+  border-color:#C6432B;
+  color:#fff;
+  box-shadow:0 6px 16px rgba(198,67,43,.28)
+}
+
+.rd-companion.flock-companion[data-mood="alerted"] .rd-companion-cta>.btn-action.primary:hover {
+  background:#A93520;
+  border-color:#A93520
+}
+
 .rd-companion.flock-companion .companion-touch {
   aspect-ratio:auto
 }
