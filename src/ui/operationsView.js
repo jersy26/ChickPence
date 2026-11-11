@@ -4,7 +4,7 @@ import { batchPerformanceThrough } from '../services/pnlCalendar.js';
 import { formatPeso, formatPercent, formatDate, localToday, filterActive } from '../services/calculations.js';
 import { daysBetween, addDays } from '../services/guidedQuestions.js';
 import { farmTabs, option, downloadFarmCsv } from './farmTable.js';
-import { header,empty,kpi,pill,table,quickButton,barChart,datePresets,presetRange } from './redesignKit.js';
+import { header,empty,kpi,pill,table,quickButton,importButton,barChart,datePresets,presetRange } from './redesignKit.js';
 import { renderDataTable } from './batchesView.js';
 import { priceCheck,priceCheckBasis } from './priceCheckView.js';
 export function healthStrip(item,target=35,today=localToday()) {
@@ -15,7 +15,7 @@ export function healthStrip(item,target=35,today=localToday()) {
 }
 export function renderOpenBatches(items,{selectedId,tab='Overview',role='owner',target=35,permissions=[],editableIds=[]}={}) {
  const selected=items.find(i=>i.batch.batch_id===selectedId)||items[0],staff=role==='staff';
- const title=header('Open batches','Your growing flocks, one batch at a time.',staff?'':'<button class="btn-action primary" type="button" id="rd-create-batch">+ New batch</button>');
+ const title=header('Open batches','Your growing flocks, one batch at a time.',staff?'':`<div class="rd-action-row">${importButton()}<button class="btn-action primary" type="button" id="rd-create-batch">+ New batch</button></div>`);
  if(!selected)return `<section class="page-section">${title}${empty('A new flock starts here',staff?'No open batches are assigned to you yet. Ask your farm manager to assign one.':'Create a batch to start tracking feed, deaths and growth.')}</section>`;
  const m=calcBatchMetrics(selected.batch,selected.allocations||[],selected.sales||[],selected.mortality||[],selected.feed||[]);
  const tabs=staff?[['Overview','Overview'],['Feed','Feed'],['Mortality','Mortality']]:[['Overview','Overview'],['Feed','Feed'],['Mortality','Mortality'],['Sales','Sales'],['Cost share','Cost share'],['History','History']];

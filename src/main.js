@@ -992,6 +992,12 @@ async function launchQuickEntry(home,tab,batchId,editing=null,prefill=null) {
  }});
 }
 function attachOperationActions(home) {
+ // Import file (Open batches, Logbook): the button opens the hidden file input next to it
+ appContainer.querySelectorAll('[data-import-file]').forEach(b=>{
+   const input=b.nextElementSibling;
+   b.addEventListener('click',()=>input?.click());
+   input?.addEventListener('change',()=>{const file=input.files?.[0];input.value='';if(file)importLogFile(file,home.openBatchesData.map(i=>i.batch));});
+ });
  appContainer.querySelectorAll('[data-request-entry]').forEach(b=>b.addEventListener('click',()=>{state.approvalState={...state.approvalState,entryId:b.dataset.requestEntry,requestId:null};navigate('nav:logbook:corrections');}));
  appContainer.querySelectorAll('[data-daily-none]').forEach(b=>b.addEventListener('click',async()=>{
    b.disabled=true;

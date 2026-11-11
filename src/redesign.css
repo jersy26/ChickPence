@@ -343,21 +343,6 @@ table,strong,b,.num {
   display:none
 }
 
-.rd-demo-note {
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:6px 14px;
-  background:#FCF1C7;
-  border-radius:14px;
-  color:#715019;
-  font-size:12px
-}
-
-.rd-demo-note button {
-  background:none
-}
-
 .page-section,.flock-dashboard {
   gap:24px;
   min-width:0
@@ -2328,9 +2313,6 @@ table,strong,b,.num {
     width:min(370px,calc(100vw - 32px));
     max-height:calc(100dvh - 100px)
   }
-  .rd-demo-note {
-    font-size:11px
-  }
   .rd-filter-toggle+.farm-filterbar:has(input:invalid) {
     display:flex
   }
@@ -2345,7 +2327,7 @@ table,strong,b,.num {
 }
 
 @media print {
-  .cp-sidebar,.cp-topbar,.cp-utilities,.rd-demo-note,.rd-phone-links,.chickcount,.farm-filterbar,.rd-filter-toggle,.rd-date-presets,.page-head>button,.farm-tabs {
+  .cp-sidebar,.cp-topbar,.cp-utilities,.rd-phone-links,.chickcount,.farm-filterbar,.rd-filter-toggle,.rd-date-presets,.page-head>button,.farm-tabs {
     display:none!important
   }
   .cp-app {
@@ -4307,13 +4289,6 @@ button.welcome-character .welcome-bubble {
 /* Decluttering pass */
 .cp-app {
   background-image:linear-gradient(#f7f2e7e6,#f7f2e7e6),url('/images/chicken-footprints.svg')
-}
-
-.rd-demo-note {
-  padding:4px 12px;
-  min-height:0;
-  font-size:12px;
-  border-radius:10px
 }
 
 .rd-cost-toolbar {
