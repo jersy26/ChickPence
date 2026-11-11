@@ -26,7 +26,9 @@ export const NAV = [
     key: 'home', label: 'Home', icon: 'home',
     subs: [
       { key: 'home:overview', label: 'Overview', view: 'dashboard' },
-      { key: 'home:insights', label: 'Daily Insights', view: 'dashboard', anchor: 'home-insights', hidden: true }
+      { key: 'home:insights', label: 'Daily Insights', view: 'dashboard', anchor: 'home-insights', hidden: true },
+      { key: 'home:health', label: 'Flock health', view: 'dashboard', anchor: 'home-health', hidden: true },
+      { key: 'home:todo', label: 'To-do list', view: 'dashboard', anchor: 'home-todo', hidden: true }
     ]
   },
   {

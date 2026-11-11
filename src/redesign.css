@@ -3920,18 +3920,110 @@ button.welcome-character .welcome-bubble {
 }
 
 .home-flock-money dt {
-  font-size:8px;
+  font-size:10px;
   text-transform:uppercase;
   letter-spacing:.04em;
   color:#6B6457
 }
 
 .home-flock-money dd {
-  font-size:12px;
-  line-height:1.4;
+  font-size:18px;
+  line-height:1.3;
   font-weight:700;
   margin:3px 0 0;
   overflow-wrap:normal
+}
+
+.home-health-bar-row {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:10px
+}
+
+.home-bar-label {
+  font-size:10px;
+  color:#4E483D;
+  flex-shrink:0;
+  min-width:72px;
+  line-height:1.3
+}
+
+.home-bar-label b {
+  font-weight:700
+}
+
+.home-health-bar-row .home-age-track,
+.home-health-bar-row .rd-meter {
+  flex:1;
+  min-width:0;
+  margin-top:0
+}
+
+.home-age-track.near-target {
+  background:#F3E4B6
+}
+
+.home-age-track.near-target i {
+  background:#C99015
+}
+
+.home-flock-card.card-overdue {
+  background:#FEF0EE
+}
+
+.home-flock-card.card-near-target {
+  background:#FEF9EC
+}
+
+.home-flock-card.card-overdue .home-flock-money {
+  border-top-color:#EDBBAF
+}
+
+.home-flock-card.card-overdue .home-flock-hero-divider {
+  background:#EDBBAF
+}
+
+.home-flock-hero {
+  display:flex;
+  align-items:center;
+  gap:16px;
+  margin:10px 0 0
+}
+
+.home-flock-hero-stat {
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  flex:1
+}
+
+.home-flock-hero-divider {
+  width:1px;
+  height:36px;
+  background:#E9E0CD;
+  flex-shrink:0
+}
+
+.home-flock-big-num {
+  font-size:26px;
+  font-weight:700;
+  line-height:1.1;
+  color:#2B2A26
+}
+
+.home-flock-big-label {
+  font-size:10px;
+  color:#6B6457;
+  line-height:1.4
+}
+
+.home-flock-big-num.text-bad {
+  color:#9A3A26
+}
+
+.home-flock-hero+.home-flock-meta {
+  margin:8px 0 4px
 }
 
 .dense-overview .pnl-calendar-host {
@@ -4194,11 +4286,15 @@ button.welcome-character .welcome-bubble {
   .home-health-metric>small {
     font-size:11px
   }
+  .home-bar-label {
+    font-size:12px;
+    min-width:80px
+  }
   .home-flock-money dt {
-    font-size:10px
+    font-size:11px
   }
   .home-flock-money dd {
-    font-size:15px
+    font-size:19px
   }
   .dense-overview .performance-kpis {
     grid-template-columns:repeat(2,minmax(0,1fr));
@@ -4453,6 +4549,18 @@ button.welcome-character .welcome-bubble {
 .rd-companion.flock-companion[data-mood="alerted"] {
   background:linear-gradient(135deg,#F8D3C6 0%,#FBE6DE 45%,#FFF8F4 100%);
   border-color:#E9AF9C
+}
+
+.rd-companion.flock-companion[data-mood="alerted"] .rd-companion-cta>.btn-action.primary {
+  background:#C6432B;
+  border-color:#C6432B;
+  color:#fff;
+  box-shadow:0 6px 16px rgba(198,67,43,.28)
+}
+
+.rd-companion.flock-companion[data-mood="alerted"] .rd-companion-cta>.btn-action.primary:hover {
+  background:#A93520;
+  border-color:#A93520
 }
 
 .rd-companion.flock-companion .companion-touch {
