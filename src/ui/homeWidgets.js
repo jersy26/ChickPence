@@ -20,18 +20,35 @@ const CARD_ICONS = {
 const TONE_WORD = { bad: 'Urgent', warn: 'Watch', info: 'For you', ok: 'Good news' };
 const VISIBLE = 4;
 
+/** Cards the question row lists: owners skip the tasks card, the to-do list beside it already shows it. */
+export function questionCards(cards = [], role = 'owner') {
+  return role === 'staff' ? cards : cards.filter((c) => c.id !== 'tasks');
+}
+
+/** "What price do I need for Batch 7?" → "What price do I need?" when the card already names the batch. */
+const shortQuestion = (question, batch) => batch ? question.replace(` for ${batch}?`, '?').replace(` on ${batch}?`, '?').replace(` in ${batch}?`, '?').replace(` in ${batch} today?`, ' today?') : question;
+
 /** The guided question row (pure). */
-export function renderGuidedCards(cards = [], { expanded = false, role = 'owner', seen = [], batchNames = {} } = {}) {
+export function renderGuidedCards(allCards = [], { expanded = false, role = 'owner', seen = [], batchNames = {} } = {}) {
+  const cards = questionCards(allCards, role);
   const ordered=[...cards].sort((a,b)=>({bad:0,warn:1,info:2,ok:3}[a.tone]??4)-({bad:0,warn:1,info:2,ok:3}[b.tone]??4));
   const shown = role==='staff' ? ordered.filter(c=>c.icon==='check').slice(0,1).map(c=>({...c,question:'My tasks today'})) : expanded ? ordered : ordered.slice(0,VISIBLE);
+  const cardHtml = (c) => `<article class="gq-card tone-${c.tone}" data-seen="${seen.includes(c.id)}"><h4 class="gq-question"><button type="button" class="gq-card-link" data-question="${escapeHtml(c.id)}" aria-haspopup="dialog" aria-label="${TONE_WORD[c.tone]}: ${escapeHtml(c.question)}">${escapeHtml(shortQuestion(c.question, batchNames[c.answer?.batchId]))}</button></h4><strong class="gq-value">${escapeHtml(c.value)}</strong><span class="gq-meaning">${escapeHtml(c.meaning.replace(/day (\d+) of (\d+)/g,(_,age,target)=>Number(age)>Number(target)?`Day ${age}, target was day ${target}`:`Day ${age} of ${target}`))}</span></article>`;
+  // One heading per batch; shown is most urgent first, so the most urgent batch leads
+  const groups = new Map();
+  for (const c of shown) {
+    const name = batchNames[c.answer?.batchId] || (role === 'staff' ? 'Your day' : 'Farm');
+    groups.set(name, [...(groups.get(name) || []), c]);
+  }
   const body = shown.length
-    ? `<div class="gq-row">${shown.map(c=>`<article class="gq-card tone-${c.tone}" data-seen="${seen.includes(c.id)}" aria-label="${escapeHtml(c.question)}"><span class="gq-top"><span class="gq-tone">${TONE_WORD[c.tone]}</span><span class="gq-batch">${escapeHtml(batchNames[c.answer?.batchId]|| (role==='staff'?'Your day':'Farm'))}</span></span><h3 class="gq-question">${escapeHtml(c.question)}</h3><strong class="gq-value">${escapeHtml(c.value)}</strong><span class="gq-meaning">${escapeHtml(c.meaning.replace(/day (\d+) of (\d+)/g,(_,age,target)=>Number(age)>Number(target)?`Day ${age}, target was day ${target}`:`Day ${age} of ${target}`))}</span><span class="gq-footer"><span class="gq-check-state ${seen.includes(c.id)?'checked':''}" data-question-check>${seen.includes(c.id)?'✓ Checked':'New today'}</span><button type="button" class="gq-answer-cta" data-question="${escapeHtml(c.id)}" aria-label="See answer: ${escapeHtml(c.question)}">See answer →</button></span></article>`).join('')}</div>`
-    : '<p class="text-mut gq-empty">No questions need an answer right now.</p>';
+    ? `<div class="gq-groups">${[...groups].map(([name, list]) => `<div class="gq-group"><h3 class="gq-group-title">${escapeHtml(name)}</h3><div class="gq-row">${list.map(cardHtml).join('')}</div></div>`).join('')}</div>`
+    : '<p class="text-mut gq-empty">Nothing needs your attention right now.</p>';
   const more = cards.length > VISIBLE
-    ? `<button type="button" class="btn-link" id="btn-gq-toggle">${expanded ? 'Show fewer' : `Show all ${cards.length} questions`}</button>`
+    ? `<button type="button" class="btn-link" id="btn-gq-toggle">${expanded ? 'Show fewer' : `Show all ${cards.length} insights`}</button>`
     : '';
+  const legend = shown.length ? `<p class="gq-legend">${[...new Set(shown.map((c) => c.tone))].map((t) => `<span class="tone-${t}">${TONE_WORD[t]}</span>`).join('')}</p>` : '';
   return `<section class="gq-section" id="home-insights" aria-labelledby="gq-title">
-    <div class="flock-panel-heading"><div><h2 id="gq-title">Today’s Questions</h2><p class="flock-panel-caption">${role === 'staff' ? 'My tasks for today.' : 'Questions your records can answer today. Tap one for the full answer.'}</p></div><span class="gq-progress-dots" aria-hidden="true">${cards.map(c=>`<i data-question-dot="${escapeHtml(c.id)}" class="${seen.includes(c.id)?'checked':''}"></i>`).join('')}</span><span class="rd-insight-progress">${seen.filter(id=>cards.some(c=>c.id===id)).length} of ${cards.length} checked</span>${more}</div>
+    <div class="flock-panel-heading"><div><h2 id="gq-title">Daily Insights</h2><p class="flock-panel-caption">${role === 'staff' ? 'My tasks for today.' : 'Key figures from your farm records, updated daily. Select a card for the full breakdown.'}</p>${legend}</div><span class="rd-insight-progress">${seen.filter(id=>cards.some(c=>c.id===id)).length} of ${cards.length} reviewed</span>${more}</div>
     ${body}
   </section>`;
 }
