@@ -76,10 +76,10 @@ export function renderTopbar(navKey, role, user, notifications = [], syncHtml = 
     <button type="button" class="cp-icon-btn cp-menu-btn" id="btn-open-menu" aria-label="Open menu" aria-controls="cp-sidebar" aria-expanded="false">${ICONS.menu}</button>
     <div class="cp-crumb"><span>${escapeHtml(group)}</span><b>${escapeHtml(page)}</b></div>
     </header><div class="cp-top-actions cp-utilities">
-      <label class="cp-role" title="Preview the app as another role. Real accounts will carry their own role.">
+      ${user?.isDemo ? `<label class="cp-role" title="Preview the app as another role. Real accounts will carry their own role.">
         <span>Demo: View as</span>
         <select id="sel-preview-role" aria-label="Preview as role">${ROLES.map((r) => `<option value="${r.id}" ${r.id === role ? 'selected' : ''}>${r.label}</option>`).join('')}</select>
-      </label>
+      </label>` : ''}
       <button type="button" class="sync-status cp-sync" id="sidebar-sync-box" title="Sync: waiting uploads and server problems"><span id="sync-indicator-text">${syncHtml}</span></button>
       <div class="cp-bell-wrap">
         <button type="button" class="cp-icon-btn" id="btn-bell" aria-label="Notifications${count ? `: ${count}` : ''}" aria-expanded="false" aria-controls="cp-bell-panel">${ICONS.bell}${count ? `<i class="cp-badge ${bad ? 'bad' : ''}">${count}</i>` : ''}</button>

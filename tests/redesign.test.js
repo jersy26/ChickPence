@@ -6,6 +6,7 @@ import { renderOpenBatches, renderCosts, renderDailyEntry } from '../src/ui/oper
 import { renderUsers } from '../src/ui/usersView.js';
 import { renderReports } from '../src/ui/reportsView.js';
 import { presetRange } from '../src/ui/redesignKit.js';
+import { renderTopbar } from '../src/ui/shell.js';
 const day='2026-11-09';
 const item={batch:{batch_id:'a',batch_name:'Flock A',start_date:'2026-11-01',initial_chick_count:100,mortality_threshold_pct:5,chick_cost:1000,status:'Open'},feed:[],mortality:[],sales:[],allocations:[]};
 describe('redesigned role and preview boundaries',()=>{
@@ -53,5 +54,11 @@ describe('redesigned role and preview boundaries',()=>{
  it('does not enable day submission before all assigned daily tasks are saved',()=>{
   const html=renderDailyEntry([item],{tasks:[{batchId:'a',type:'feed',done:false,due:'18:00'}]},{role:'staff'});
   expect(html).toMatch(/data-submit-day="[^"]+" disabled/);expect(html).toContain('Saved entries and farm review behavior stay unchanged');
+ });
+});
+describe('role preview switcher',()=>{
+ it('shows only for demo accounts, never for a real login',()=>{
+  expect(renderTopbar('home:overview','owner',{id:'d',email:'demo',isDemo:true})).toContain('sel-preview-role');
+  expect(renderTopbar('home:overview','owner',{id:'u',email:'farmer@example.com',isDemo:false})).not.toContain('sel-preview-role');
  });
 });

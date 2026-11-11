@@ -228,6 +228,9 @@ let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;
   const isLatest = () => seq === renderSeq;
+  // Role preview is a demo feature; a real account is the farm owner until profiles carry roles
+  const signedIn = AuthService.getUser();
+  if (signedIn && !signedIn.isDemo) state.role = 'owner';
 
   if (!AuthService.isLoggedIn() || state.view === 'login') {
     state.insights = null;
@@ -583,6 +586,7 @@ function attachHomeListeners(home) {
 
 /** Preview the app as another role; pages that role cannot open fall back to Home. */
 function changeRole(role) {
+  if (!AuthService.getUser()?.isDemo) return;
   state.role = normalizeRole(role);
   saveFarmSettings({ previewRole: state.role });
   const allowed = navForRole(state.role).some((g) => g.subs.some((s) => s.key === state.navKey));
