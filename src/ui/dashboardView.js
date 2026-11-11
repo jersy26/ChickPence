@@ -40,7 +40,7 @@ function loadChart() {
   return chartModule;
 }
 
-const CHART_FONT = "Optima, 'Optima Nova', 'URW Classico', Candara, 'Segoe UI', sans-serif";
+const CHART_FONT = "'Poppins', sans-serif";
 
 let lineChartInstance = null;
 

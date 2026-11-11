@@ -1,10 +1,9 @@
 /*
  * Readability: a size floor and darker secondary text across every page.
- * Optima and its Windows stand-in Candara read smaller than Poppins at the
- * same pixel size, so body text sits at 15px and no running label goes below
- * 13px. Secondary grey moves from #6B6457 (5.3:1 on cream) to #544D41
- * (about 7.5:1). Loaded last, after font-optima.css; .cp-app in front of each
- * selector lets these win over the older, narrower media-query sizes.
+ * Body text sits at 15px and no running label goes below 13px. Secondary
+ * grey moves from #6B6457 (5.3:1 on cream) to #544D41 (about 7.5:1).
+ * Loaded last; .cp-app in front of each selector lets these win over the
+ * older, narrower media-query sizes.
  */
 :root {
   --mut:#544D41;
