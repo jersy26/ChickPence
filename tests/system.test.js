@@ -107,10 +107,11 @@ describe('TC-S-05: mortality flag displayed', () => {
 
     const flagged = healthStrip(await details(over), 35, '2026-01-06');
     const level = healthStrip(await details(at), 35, '2026-01-06');
-    expect(flagged).toContain('<b class="text-bad">5.1% mortality</b>');
-    expect(flagged).toContain('rd-meter mortality urgent');
-    expect(level).toContain('<b class="">5.0% mortality</b>');
-    expect(level).not.toContain('rd-meter mortality urgent');
+    expect(flagged).toContain('<span class="home-flock-big-num text-bad">5.1%</span>');
+    expect(flagged).toContain('<b class="text-bad">Above</b> your 5% limit');
+    expect(level).toContain('<span class="home-flock-big-num">5.0%</span>');
+    expect(level).toContain('Within your 5% limit');
+    expect(level).not.toContain('Above</b> your');
   });
 });
 

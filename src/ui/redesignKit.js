@@ -33,6 +33,17 @@ export function presetRange(preset,today=localToday()) {
 }
 /** Enhancement of rendered tables/filters. No record changes are made here. */
 export function attachRedesignKit(container) {
+ container.querySelectorAll('[data-paged]').forEach(list=>{
+  const items=[...list.children];
+  if(items.length<=10)return;
+  let current=1,size=10;
+  const pager=document.createElement('div');pager.className='farm-pagination rd-local-pagination rd-list-pagination';
+  pager.innerHTML='<span data-range></span><div class="farm-page-buttons"><button type="button" class="btn-action" data-prev aria-label="Previous page">‹</button><span data-page></span><button type="button" class="btn-action" data-next aria-label="Next page">›</button></div><label>Rows<select aria-label="Rows per page"><option value="10">10 / page</option><option value="25">25 / page</option><option value="50">50 / page</option></select></label>';
+  list.after(pager);
+  const draw=()=>{const pages=Math.ceil(items.length/size);current=Math.max(1,Math.min(current,pages));items.forEach((el,i)=>{el.hidden=i<(current-1)*size||i>=current*size;});pager.querySelector('[data-range]').textContent=`${(current-1)*size+1}–${Math.min(current*size,items.length)} of ${items.length.toLocaleString()} records`;pager.querySelector('[data-page]').textContent=`Page ${current} of ${pages}`;pager.querySelector('[data-prev]').disabled=current===1;pager.querySelector('[data-next]').disabled=current===pages;};
+  const turn=delta=>{current+=delta;draw();list.scrollIntoView({block:'nearest'});};
+  pager.querySelector('[data-prev]').onclick=()=>turn(-1);pager.querySelector('[data-next]').onclick=()=>turn(1);pager.querySelector('select').onchange=e=>{size=Number(e.target.value);current=1;draw();};draw();
+ });
  container.querySelectorAll('table').forEach(t=>{
   const heads=[...t.querySelectorAll('thead th')].map(h=>h.textContent.trim());
   t.querySelectorAll('tbody tr').forEach(row=>[...row.children].forEach((cell,i)=>{if(!cell.hasAttribute('colspan'))cell.dataset.label=heads[i]||'';}));
