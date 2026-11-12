@@ -5762,13 +5762,12 @@ button.welcome-character .welcome-bubble {
   border-radius:999px
 }
 
-.rd-exp[hidden] {
+[data-paged]>[hidden] {
   display:none
 }
 
-.rd-exp-more {
-  align-self:center;
-  margin-top:4px
+.rd-list-pagination select {
+  max-width:none
 }
 
 .rd-exp-amount {

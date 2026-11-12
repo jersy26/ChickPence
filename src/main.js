@@ -299,11 +299,6 @@ async function render() {
   } else if (state.view === 'costs') {
     drawPage(renderCosts([...home.openBatchesData,...home.closedBatchesData],home.expenses,{tab:state.navKey.split(':')[1],filters:state.costFilters}));
     attachLiveFilters('#rd-cost-filters',values=>{state.costFilters=values;render();});
-    appContainer.querySelector('[data-exp-more]')?.addEventListener('click',e=>{
-      const hidden=[...appContainer.querySelectorAll('.rd-exp[hidden]')],left=hidden.length-10;
-      hidden.slice(0,10).forEach(row=>{row.hidden=false;});
-      if(left>0)e.currentTarget.textContent=`Show more (${left} older)`;else e.currentTarget.remove();
-    });
     attachRecurringPreview();
 
   } else if (state.view === 'daily-entry') {
