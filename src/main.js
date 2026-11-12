@@ -1004,7 +1004,8 @@ function attachOperationActions(home) {
  appContainer.querySelectorAll('[data-quick-entry]').forEach(b=>b.addEventListener('click',()=>launchQuickEntry(home,b.dataset.quickEntry,b.dataset.batchId,null,b.dataset.entryDate?{entry_date:b.dataset.entryDate,sale_date:b.dataset.entryDate}:null)));
  appContainer.querySelectorAll('[data-select-batch]').forEach(b=>b.addEventListener('click',()=>{state.selectedBatchId=b.dataset.selectBatch;render();}));
  appContainer.querySelectorAll('[data-batch-section]').forEach(b=>b.addEventListener('click',()=>{state.batchSection=b.dataset.batchSection;render();}));
- appContainer.querySelectorAll('[data-compare-batch]').forEach(b=>b.addEventListener('change',()=>{state.compareIds=[...appContainer.querySelectorAll('[data-compare-batch]:checked')].map(i=>i.dataset.compareBatch);render();}));
+ appContainer.querySelectorAll('[data-compare-batch]').forEach(b=>b.addEventListener('change',()=>{const id=b.dataset.compareBatch,rest=state.compareIds.filter(x=>x!==id);state.compareIds=b.checked?[...rest,id]:rest;render();}));
+ appContainer.querySelector('[data-compare-clear]')?.addEventListener('click',()=>{state.compareIds=[];render();});
  appContainer.querySelectorAll('[data-edit-cost]').forEach(b=>b.addEventListener('click',()=>{const e=home.expenses.find(e=>e.expense_id===b.dataset.editCost);launchQuickEntry(home,'Expenses',null,e);}));
  appContainer.querySelectorAll('[data-action="edit-row"]').forEach(b=>b.addEventListener('click',()=>{
    if(state.role==='staff'&&!editablePreviewIds(home).includes(b.dataset.id))return showToast('Request a correction in Logbook.');
@@ -1015,6 +1016,14 @@ function attachOperationActions(home) {
    if(state.role==='staff')return showToast('Request a correction in Logbook.');
    if(confirm('Delete this saved entry? This changes the batch records and queues the deletion for upload.')){const original=await db[b.dataset.table].get(b.dataset.id);await Repository.deleteRecord(b.dataset.table,b.dataset.id);await render();offerUndoEntry(b.dataset.table,original);}
  }));
+ const batchMenu=appContainer.querySelector('.rd-batch-head .rd-row-menu');
+ if(batchMenu){
+   const closeMenu=e=>{
+     if(!batchMenu.isConnected)return document.removeEventListener('click',closeMenu);
+     if(!batchMenu.contains(e.target)||e.target.closest('.rd-menu-pop button'))batchMenu.open=false;
+   };
+   document.addEventListener('click',closeMenu);
+ }
  appContainer.querySelectorAll('[data-batch-threshold]').forEach(b=>b.addEventListener('click',()=>{const item=home.openBatchesData.find(i=>i.batch.batch_id===b.dataset.batchThreshold);if(item)openThresholdModal(item.batch,async patch=>{await Repository.updateBatchThresholds(item.batch.batch_id,patch);render();});}));
  appContainer.querySelectorAll('[data-batch-close]').forEach(b=>b.addEventListener('click',()=>{
    const item=home.openBatchesData.find(i=>i.batch.batch_id===b.dataset.batchClose);if(!item)return;
