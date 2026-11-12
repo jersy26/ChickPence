@@ -5092,6 +5092,79 @@ button.welcome-character .welcome-bubble {
     grid-template-columns:1fr
   }
 }
+/* Compare batches: inline "Why the difference?" explanation */
+.rd-why {
+  margin-top:14px
+}
+
+.rd-why>summary {
+  display:inline-flex;
+  list-style:none;
+  cursor:pointer
+}
+
+.rd-why>summary::-webkit-details-marker {
+  display:none
+}
+
+.rd-why[open]>summary {
+  background:#F6E7B4
+}
+
+.rd-why-body {
+  margin-top:12px;
+  padding:16px 18px;
+  border-radius:16px;
+  border:1px solid #EFE2BC;
+  background:linear-gradient(150deg,#FFF6DA 0%,#FFFDF6 70%)
+}
+
+.rd-why-body p {
+  margin:0;
+  font-size:14px;
+  line-height:1.5
+}
+
+.rd-why-body ul {
+  margin:10px 0 0;
+  padding:0;
+  list-style:none;
+  display:flex;
+  flex-direction:column;
+  gap:8px
+}
+
+.rd-why-body li {
+  position:relative;
+  padding-left:18px;
+  font-size:13px;
+  line-height:1.5;
+  color:#4E483D
+}
+
+.rd-why-body li::before {
+  content:'';
+  position:absolute;
+  left:0;
+  top:7px;
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#C99015
+}
+
+.rd-why-body li.deaths::before {
+  background:#C6432B
+}
+
+.rd-why-body li.cost::before {
+  background:#2F6F99
+}
+
+.rd-why-body b.text-good {
+  color:#3E7F50
+}
+
 /* Compare batches: selectable batch cards */
 .rd-compare-picker {
   display:flex;
