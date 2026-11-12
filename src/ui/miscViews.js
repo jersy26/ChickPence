@@ -25,28 +25,40 @@ export function taskHistory({ openBatchesData, expenses, today, marks, dueTime, 
 }
 
 export function renderTeamBoard(history, todayResult) {
-  const cell = (t,date) => `<td class="board-cell ${t ? (t.done ? 'done' : 'missed') : 'na'}" title="${t ? (t.done ? 'Recorded' : 'Missing') : 'No task'}">${t?`<button type="button" data-entry-date="${date}" data-quick-entry="${t.type==='feed'?'Feed':t.type==='deaths'?'Mortality':'Expenses'}" data-batch-id="${escapeHtml(t.batchId||'')}" aria-label="Open ${escapeHtml(t.label)}">${t.done?'✓':'—'}</button>`:''}</td>`;
+  const todayDate = history[history.length - 1]?.date;
+  const state = (t, date) => !t ? 'na' : t.done ? 'done' : date === todayDate ? (t.overdue ? 'missed' : 'due') : 'missed';
+  const symbol = { done: '✓', missed: '✕', due: '•' }, word = { done: 'Recorded', missed: 'Missed', due: 'Due today' };
+  const cell = (t,date) => { const s = state(t, date); return `<td class="board-cell ${s}${date===todayDate?' is-today':''}" title="${t ? word[s] : 'No task'}">${t?`<button type="button" data-entry-date="${date}" data-quick-entry="${t.type==='feed'?'Feed':t.type==='deaths'?'Mortality':'Expenses'}" data-batch-id="${escapeHtml(t.batchId||'')}" aria-label="${escapeHtml(t.label)}, ${formatDate(date)}: ${word[s]}">${symbol[s]}</button>`:''}</td>`; };
   const taskIds = [...new Set(history.flatMap((d) => d.tasks.map((t) => t.id)))];
   const labelOf = new Map(history.flatMap((d) => d.tasks.map((t) => [t.id, t.label])));
   const people=loadPreviewUsers().filter(p=>p.role==='staff'&&p.status==='active');
   const belongs=(task,p)=>task.type==='receipts'?p.permissions?.includes('record.expense'):p.batches==='All'||String(p.batches||'').split(',').some(name=>name.trim()&&task.label.includes(name.trim()));
   const assigned=id=>{const task=history.flatMap(d=>d.tasks).find(t=>t.id===id);return people.filter(p=>belongs(task,p)).map(p=>p.name).join(', ')||'Not assigned';};
-  const rows = taskIds.map((id) => `<tr><th scope="row">${escapeHtml(labelOf.get(id))}</th><td>${escapeHtml(assigned(id))}</td>${history.map((d) => cell(d.tasks.find((t) => t.id === id),d.date)).join('')}</tr>`).join('');
+  const rows = taskIds.map((id) => `<tr><th scope="row"><b>${escapeHtml(labelOf.get(id))}</b><small>${escapeHtml(assigned(id))}</small></th>${history.map((d) => cell(d.tasks.find((t) => t.id === id),d.date)).join('')}</tr>`).join('');
   const missed = history.slice(0, -1).reduce((s, d) => s + (d.total - d.done), 0);
+  const weekDone = history.reduce((s, d) => s + d.done, 0), weekTotal = history.reduce((s, d) => s + d.total, 0), weekPct = weekTotal ? Math.round(weekDone / weekTotal * 100) : 0;
+  const dayName = (date, opts) => new Date(`${date}T00:00:00`).toLocaleDateString('en-PH', opts);
+  const spark = history.map((d) => { const r = d.total ? d.done / d.total : 0; return `<i class="${r >= 0.8 ? 'good' : r >= 0.5 ? 'mid' : 'bad'}" style="height:${Math.max(8, r * 100).toFixed(0)}%" title="${formatDate(d.date)}: ${d.done} of ${d.total}"></i>`; }).join('');
+  const initials = (name) => String(name || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  const personCard = (p) => {
+    const todayTasks = todayResult.tasks.filter((t) => belongs(t, p)), done = todayTasks.filter((t) => t.done).length, total = todayTasks.length;
+    const pMissed = history.slice(0, -1).flatMap((d) => d.tasks).filter((t) => belongs(t, p) && !t.done).length, allDone = total > 0 && done === total;
+    return `<div class="rd-person ${allDone ? 'is-done' : 'is-due'}"><span class="rd-avatar" aria-hidden="true">${escapeHtml(initials(p.name))}</span><div class="rd-person-main"><b>${escapeHtml(p.name)}</b><span class="rd-person-batch">${escapeHtml(p.batches || 'No batches')}</span><span class="rd-missed-chip ${pMissed ? 'bad' : 'good'}">${pMissed ? `${pMissed} missed this week` : 'Nothing missed this week'}</span></div><div class="home-ring live no-limit rd-person-ring ${allDone ? 'is-done' : ''}" style="--p:${total ? (done / total * 100).toFixed(0) : 0}" role="img" aria-label="${done} of ${total} done today"><span class="home-flock-big-num">${done}/${total}</span><span class="home-flock-big-label">today</span></div></div>`;
+  };
   return `<section class="page-section" aria-labelledby="team-title">
-    <div class="page-head"><div><h1 id="team-title">Task board</h1><p class="text-mut">Daily records per batch over the last 7 days. Ticks come from the saved entries.</p></div></div>
-    <div class="rd-team-people">${people.map(p=>{const todayTasks=todayResult.tasks.filter(t=>belongs(t,p)),done=todayTasks.filter(t=>t.done).length,missed=history.slice(0,-1).flatMap(d=>d.tasks).filter(t=>belongs(t,p)&&!t.done).length;return `<div class="rd-person-chip"><b>${escapeHtml(p.name)}</b><strong>${done} of ${todayTasks.length} done today</strong><span>${missed} missed this week</span><span>Assigned: ${escapeHtml(p.batches||'No batches')}</span></div>`;}).join('')}</div>
-    <div class="user-counters">
-      <div class="card-box"><span>Done today</span><b>${todayResult.done} of ${todayResult.total}</b></div>
-      <div class="card-box"><span>Overdue today</span><b class="${todayResult.overdue ? 'text-bad' : ''}">${todayResult.overdue}</b></div>
-      <div class="card-box"><span>Missed, past 6 days</span><b class="${missed ? 'text-bad' : ''}">${missed}</b></div>
+    <div class="page-head"><div><h1 id="team-title">Task board</h1><p class="text-mut">Who recorded what over the last 7 days. Tap a square to open that day's entry.</p></div></div>
+    <div class="rd-team-summary">
+      <div class="rd-team-tile today"><span>Done today</span><strong>${todayResult.done} of ${todayResult.total}</strong><div class="todo-progress"><i style="width:${todayResult.total ? todayResult.done / todayResult.total * 100 : 0}%"></i></div></div>
+      <div class="rd-team-tile ${todayResult.overdue ? 'bad' : 'good'}"><span>Overdue today</span><strong>${todayResult.overdue}</strong><small>${todayResult.overdue ? 'Past the due time and not recorded' : 'Nothing overdue'}</small></div>
+      <div class="rd-team-tile week ${weekPct >= 80 ? 'good' : weekPct >= 50 ? '' : 'bad'}"><div><span>Last 7 days</span><strong>${weekPct}% done</strong><small>${missed} missed in the past 6 days</small></div><div class="rd-spark" role="img" aria-label="Daily completion, last 7 days">${spark}</div></div>
     </div>
-    <div class="card-box log-table-wrap">
+    ${people.length ? `<div class="rd-team-people">${people.map(personCard).join('')}</div>` : ''}
+    <div class="card-box log-table-wrap rd-board-wrap">
       <table class="log-table board-table">
-        <thead><tr><th>Task</th><th>Assigned to</th>${history.map((d) => `<th>${formatDate(d.date)}</th>`).join('')}</tr></thead>
-        <tbody>${rows || '<tr><td colspan="9" class="text-mut">No open batches.</td></tr>'}</tbody>
+        <thead><tr><th>Task</th>${history.map((d) => `<th class="${d.date === todayDate ? 'is-today' : ''}"><span>${dayName(d.date, { weekday: 'short' })}</span><b>${dayName(d.date, { day: 'numeric' })}</b></th>`).join('')}</tr></thead>
+        <tbody>${rows || `<tr><td colspan="${history.length + 1}" class="text-mut">No open batches.</td></tr>`}</tbody>
       </table>
-
+      <p class="rd-board-legend"><span class="board-key done">✓</span>Recorded <span class="board-key missed">✕</span>Missed <span class="board-key due">•</span>Due today</p>
     </div>
   </section>`;
 }
