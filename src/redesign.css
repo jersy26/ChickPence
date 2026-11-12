@@ -5571,3 +5571,226 @@ button.welcome-character .welcome-bubble {
     font-size:16px
   }
 }
+/* Daily expenses: summary cards and expense rows */
+.rd-cost-cards {
+  display:grid;
+  grid-template-columns:1.4fr 1fr 1fr;
+  gap:12px
+}
+
+.rd-cost-card {
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:6px;
+  min-width:0;
+  padding:18px 20px;
+  border-radius:20px;
+  border:1px solid #EFE7D6;
+  background:linear-gradient(150deg,#FFFFFF 0%,#FBF7EC 100%)
+}
+
+.rd-cost-card span {
+  font-size:12px;
+  color:#6B6457
+}
+
+.rd-cost-card strong {
+  font-size:clamp(22px,2.6vw,30px);
+  font-weight:700;
+  line-height:1.15;
+  overflow-wrap:anywhere
+}
+
+.rd-cost-card small {
+  font-size:12px;
+  color:#6B6457
+}
+
+.rd-cost-card.month {
+  background:linear-gradient(135deg,#FBE7A8 0%,#FFF6D8 60%,#FFFDF4 100%);
+  border-color:#EED79A
+}
+
+.rd-cost-card.month strong {
+  font-size:clamp(26px,3.2vw,36px)
+}
+
+.rd-cost-card.trend.up {
+  background:linear-gradient(135deg,#F9D6CA 0%,#FDEFEA 100%);
+  border-color:#EFBCAB
+}
+
+.rd-cost-card.trend.down {
+  background:linear-gradient(135deg,#D3EBD6 0%,#F1F9F1 100%);
+  border-color:#BCDDC1
+}
+
+.rd-cost-card.trend.up .rd-trend {
+  color:#9A3A26;
+  font-weight:700
+}
+
+.rd-cost-card.trend.down .rd-trend {
+  color:#2F6B3F;
+  font-weight:700
+}
+
+.rd-split-bar,.rd-exp-bar {
+  display:flex;
+  height:8px;
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(43,42,38,.07)
+}
+
+.rd-split-bar {
+  height:10px;
+  margin-top:2px
+}
+
+.rd-split-bar i,.rd-exp-bar i {
+  display:block;
+  height:100%
+}
+
+.rd-split-bar i.feed,.rd-exp-bar i.feed {
+  background:linear-gradient(90deg,#9FCB8A,#5E9C55)
+}
+
+.rd-split-bar i.other,.rd-exp-bar i.other {
+  background:linear-gradient(90deg,#9CC4E2,#3F7FA6)
+}
+
+.dot {
+  display:inline-block;
+  width:8px;
+  height:8px;
+  margin:0 5px 1px 0;
+  border-radius:50%;
+  vertical-align:middle
+}
+
+.dot.feed {
+  background:#5E9C55
+}
+
+.dot.other {
+  background:#3F7FA6
+}
+
+.rd-cost-card small .dot.other,.rd-exp-legend .dot.other {
+  margin-left:10px
+}
+
+.rd-exp-head {
+  display:flex;
+  align-items:baseline;
+  flex-wrap:wrap;
+  gap:6px 14px;
+  margin-top:6px
+}
+
+.rd-exp-head .rd-section-title {
+  margin:0
+}
+
+.rd-exp-head>span {
+  font-size:13px;
+  color:#6B6457
+}
+
+.rd-exp-legend {
+  margin-left:auto
+}
+
+.rd-exp-list {
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:8px
+}
+
+.rd-exp {
+  display:grid;
+  grid-template-columns:64px minmax(0,1fr) auto 36px;
+  align-items:center;
+  gap:16px;
+  padding:12px 12px 12px 14px;
+  border-radius:16px;
+  border:1px solid #EFE7D6;
+  background:#FFFEFA
+}
+
+.rd-exp:hover {
+  border-color:#E6D7AE
+}
+
+.rd-exp:hover .rd-row-edit {
+  opacity:1;
+  background:#FCF1C7;
+  color:#2B2A26
+}
+
+.rd-exp-main {
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:0
+}
+
+.rd-exp-desc {
+  font-size:14px
+}
+
+.rd-exp-split {
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px 16px;
+  font-size:13px;
+  color:#4E483D
+}
+
+.rd-exp-bar {
+  max-width:420px
+}
+
+.rd-exp-amount {
+  font-size:18px;
+  white-space:nowrap
+}
+
+@media (max-width:640px) {
+  .rd-cost-cards {
+    grid-template-columns:1fr 1fr
+  }
+  .rd-cost-card.month {
+    grid-column:1/-1
+  }
+  .rd-cost-card {
+    padding:14px
+  }
+  .rd-cost-card:not(.month) strong {
+    font-size:clamp(16px,5vw,22px)
+  }
+  .rd-exp-legend {
+    margin-left:0
+  }
+  .rd-exp {
+    grid-template-columns:48px minmax(0,1fr) 32px;
+    gap:6px 12px;
+    padding:12px
+  }
+  .rd-exp-amount {
+    grid-column:2;
+    grid-row:2;
+    font-size:16px
+  }
+  .rd-exp .rd-row-edit {
+    grid-column:3;
+    grid-row:1/3;
+    opacity:1
+  }
+}
