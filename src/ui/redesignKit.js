@@ -1,9 +1,12 @@
 import { escapeHtml as esc } from './html.js';
 import { formatPeso, formatDate, localToday } from '../services/calculations.js';
+import { IMPORT_ACCEPT } from '../services/fileImport.js';
 export const chicken = (mood='sleepy',className='') => `<img class="rd-chicken ${className}" src="/images/chickens/chicken-${mood}.svg" alt="${mood} chicken" width="240" height="240"/>`;
 export const pill = (text,tone='neutral') => `<span class="rd-pill ${tone}">${esc(text)}</span>`;
 export const header = (title,description='',action='') => `<header class="page-head"><div><h1>${esc(title)}</h1>${description?`<p class="text-mut">${esc(description)}</p>`:''}</div>${action}</header>`;
-export const quickButton = (tab,label,batchId='') => `<button type="button" class="btn-action primary" data-quick-entry="${tab}" data-batch-id="${esc(batchId)}">${esc(label)}</button>`;
+/** "Import file": logs from Excel, CSV, PDF or a photo, reviewed before anything is saved (main.js wires it). */
+export const importButton = () => `<button type="button" class="btn-action" data-import-file title="Add logs from an Excel, CSV or PDF file, or a photo. You review them before anything is saved.">Import file</button><input type="file" accept="${IMPORT_ACCEPT}" data-import-input hidden/>`;
+export const quickButton =(tab,label,batchId='') => `<button type="button" class="btn-action primary" data-quick-entry="${tab}" data-batch-id="${esc(batchId)}">${esc(label)}</button>`;
 export const empty = (title,text,action='') => `<div class="rd-empty">${chicken()}<h2>${esc(title)}</h2><p>${esc(text)}</p>${action}</div>`;
 export const kpi = (label,value,note='',tone='',fullValue=value) => `<div class="rd-kpi ${tone}"><span>${esc(label)}</span><strong title="${esc(String(fullValue))}">${esc(String(value))}</strong>${note?`<small>${esc(note)}</small>`:''}</div>`;
 export const moneyCompact = (value,digits) => {

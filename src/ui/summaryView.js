@@ -7,7 +7,7 @@ import {
   filterActive,
   sumField
 } from '../services/calculations.js';
-import { calcBatchMetrics } from '../services/allocationEngine.js';
+import { calcBatchMetrics, sharedCostByBasis, leftoverHoldingCost } from '../services/allocationEngine.js';
 import { renderExportButton, attachExportButton } from './exportMenu.js';
 import { renderInsightsCard } from './insightsCard.js';
 import { escapeHtml } from './html.js';
@@ -15,11 +15,93 @@ import { escapeHtml } from './html.js';
 const NA = 'N/A';
 
 function metricVal(val, formatter = (v) => v) {
-  if (val === NA) return `<span class="text-mut">N/A</span>`;
+  if (val === NA) return `<span class="text-mut">Not available</span>`;
   return formatter(val);
 }
 
-export function renderSummary(batchData, insights = null) {
+const signedPeso = (centavos) => (centavos > 0 ? '+' : '') + formatPesoCentavos(centavos);
+
+/**
+ * The batch's total cost under each way of sharing the daily costs (thesis
+ * Table 18). Only the shared costs move; the chick cost stays on the batch.
+ */
+function renderSharingComparison(batch, chickCost, farm) {
+  const shared = sharedCostByBasis(batch.batch_id, farm.expenses, farm.batches, farm.mortality, farm.sales);
+  if (!shared.live && !shared.initial && !shared.equal) return '';
+  const chick = Math.round(chickCost * 100);
+  const rules = [
+    ['Live birds (used by the app)', shared.live],
+    ['Initial chicks', shared.initial],
+    ['Equal split', shared.equal]
+  ];
+  const rows = rules.map(([label, cents], i) => `
+        <tr>
+          <td>${i === 0 ? `<b>${label}</b>` : label}</td>
+          <td>${formatPesoCentavos(cents)}</td>
+          <td><b>${formatPesoCentavos(chick + cents)}</b></td>
+          <td>${i === 0 ? '—' : signedPeso(cents - shared.live)}</td>
+        </tr>`).join('');
+  const same = shared.live === shared.initial && shared.live === shared.equal;
+  return `
+    <div class="card-box" style="margin-top: 12px;">
+      <h2>Cost under other sharing rules</h2>
+      <span class="text-mut">What this batch would have cost if shared daily costs were split another way.</span>
+      <div class="table-wrap" style="margin-top:8px;">
+        <table>
+          <thead><tr><th>Sharing rule</th><th>Shared costs</th><th>Total recorded cost</th><th>Difference</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="text-mut" style="margin-top:8px;font-size:12px;">
+        ${same
+          ? 'This batch never shared a day with another batch, so every rule gives the same cost.'
+          : `The chick cost (${formatPesoCentavos(chick)}) is the same under every rule. Live birds is the owner-approved rule; the others show how much the choice matters.`}
+      </div>
+    </div>`;
+}
+
+/** What the batch's leftover birds have cost since a newer batch arrived. */
+function renderLeftoverCost(batch, batchData, farm) {
+  const r = leftoverHoldingCost(batch, {
+    batches: farm.batches,
+    expenses: farm.expenses,
+    allocations: batchData.allocations,
+    mortality: batchData.mortality,
+    sales: batchData.sales,
+    feed: batchData.feed,
+    today: farm.today
+  });
+  if (!r || !r.holdingCentavos) return '';
+  const open = batch.status === 'Open';
+  return `
+    <div class="card-box" style="margin-top: 12px;">
+      <h2>Leftover birds</h2>
+      <span class="text-mut">
+        Since ${escapeHtml(r.newerBatchName)} started on ${formatDate(r.since, true)}, this batch's birds have shared the farm's daily costs with it.
+      </span>
+      <div class="grid-4" style="margin-top:8px;">
+        <div class="kpi-card">
+          <span class="text-mut">Cost since then</span>
+          <b>${formatPesoCentavos(r.holdingCentavos)}</b>
+          <span class="text-mut" style="font-size:11px;">over ${r.days.toLocaleString()} day${r.days === 1 ? '' : 's'}</span>
+        </div>
+        <div class="kpi-card">
+          <span class="text-mut">Cost per day lately</span>
+          <b>${formatPesoCentavos(r.perDayCentavos)}</b>
+          <span class="text-mut" style="font-size:11px;">average of the last 7 days</span>
+        </div>
+        ${open && r.perBirdCentavos != null ? `
+        <div class="kpi-card">
+          <span class="text-mut">Still to earn back per bird</span>
+          <b>${formatPesoCentavos(r.perBirdCentavos)}</b>
+          <span class="text-mut" style="font-size:11px;">${r.liveBirds.toLocaleString()} live birds share ${formatPesoCentavos(r.unrecoveredCentavos)}</span>
+        </div>` : ''}
+      </div>
+      ${open ? `<div class="text-mut" style="margin-top:8px;font-size:12px;">Every extra day adds about ${formatPesoCentavos(r.perDayCentavos)} to this batch. Use Price check to test a buyer's offer for the remaining birds.</div>` : ''}
+    </div>`;
+}
+
+export function renderSummary(batchData, insights = null, farm = null) {
   if (!batchData?.batch) {
     return `
       <div class="card-box" style="text-align: center; padding: 32px;">
@@ -172,6 +254,9 @@ export function renderSummary(batchData, insights = null) {
         </div>
       </div>
     </div>
+
+    ${farm ? renderLeftoverCost(batch, batchData, farm) : ''}
+    ${farm ? renderSharingComparison(batch, chickCost, farm) : ''}
 
     ${insights ? `<div style="margin-top: 12px;">${renderInsightsCard(insights)}</div>` : ''}
   `;

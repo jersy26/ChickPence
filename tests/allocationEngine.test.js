@@ -2,35 +2,32 @@
  * allocationEngine.test.js
  * Vitest unit tests for src/services/allocationEngine.js
  *
- * Test IDs map to the thesis Requirements Traceability Matrix (Table 20):
- *   TC-U-01  liveHeadCount basics
- *   TC-U-02  liveHeadCount after sales
- *   TC-U-03  largestRemainderSplit — overlap example (Table 17)
- *   TC-U-04  largestRemainderSplit — other costs
- *   TC-U-05  computeAllocationsForExpense sums exactly
- *   TC-U-06  computeAllocationsForExpense — single batch 100%
- *   TC-U-07  computeAllocationsForExpense — no active batch returns null
- *   TC-U-08  computeAllocationsForExpense — all birds sold, null
- *   TC-U-09  backdated mortality / sale changes allocation
+ * Test IDs are those of the thesis traceability matrix (Table 20):
+ *   TC-U-01  chick cost counted once
+ *   TC-U-02  active batch rule (live head count)
+ *   TC-U-03  shares add up (Table 17), single batch
+ *   TC-U-04  three batches
+ *   TC-U-05  no active batch
+ *   TC-U-09  mortality flag at, above and below the alert level
  *   TC-U-10  Batch H worked example — all 11 metrics match hand calculations (Table 19)
- *   TC-U-11  N/A guard: margin when revenue = 0
- *   TC-U-12  N/A guard: costPerKg when kgSold = 0
- *   TC-U-13  N/A guard: profitPerKg when kgSold = 0
- *   TC-U-14  N/A guard: fcr when kgSold = 0
- *   TC-U-15  N/A guard: robc when totalCost = 0
- *   TC-U-16  Migration: old cost row sums correctly into other_centavos
- *   TC-U-17  Migration: single-batch migrated expense allocates 100%
+ *   TC-U-11  zero denominators show N/A
+ *   TC-U-13  business logic separate from the UI and database
+ * TC-U-06/07/08/12 are in entryChecks.test.js, TC-U-14 in uiPages.test.js,
+ * TC-U-15/16 in sharingAndLeftovers.test.js. The migration checks have no ID.
  *
  * Run: npm test
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   liveHeadCount,
   isBatchActiveOnDate,
   largestRemainderSplit,
   computeAllocationsForExpense,
-  calcBatchMetrics
+  calcBatchMetrics,
+  evalMortalityWarning
 } from '../src/services/allocationEngine.js';
 
 // ---------------------------------------------------------------------------
@@ -76,12 +73,12 @@ const mkSale = (batchId, date, qty, weightKg = null, pricePerKg = 100) => {
 };
 
 // ---------------------------------------------------------------------------
-// TC-U-03 / TC-U-04 / TC-U-05
+// TC-U-02 / TC-U-03
 // Overlap day: Batch A 3,000 heads, Batch B 9,000 heads
 //   Feed ₱12,345.67 → A ₱3,086.42 (308642 ¢), B ₱9,259.25 (925925 ¢)
 //   Other ₱1,000.01 → A ₱250.00  (25000 ¢),  B ₱750.01  (75001 ¢)
 // ---------------------------------------------------------------------------
-describe('TC-U-03/04/05: Overlap allocation — thesis Table 17 example', () => {
+describe('TC-U-03: Shares add up — thesis Table 17 example', () => {
   const batchA = mkBatch('batch-a', '2026-01-01', 3000);
   const batchB = mkBatch('batch-b', '2026-01-01', 9000);
   const date = '2026-01-10'; // Both active, no deaths or sales yet
@@ -93,12 +90,12 @@ describe('TC-U-03/04/05: Overlap allocation — thesis Table 17 example', () => 
     other_centavos: 100001  // ₱1,000.01
   };
 
-  it('TC-U-01: Batch A live head count is 3000 and Batch B is 9000', () => {
+  it('TC-U-02: Batch A live head count is 3000 and Batch B is 9000', () => {
     expect(liveHeadCount(batchA, [], [], date)).toBe(3000);
     expect(liveHeadCount(batchB, [], [], date)).toBe(9000);
   });
 
-  it('TC-U-03: Feed allocation: A ₱3,086.42 (308642 ¢), B ₱9,259.25 (925925 ¢)', () => {
+  it('TC-U-03a: Feed allocation: A ₱3,086.42 (308642 ¢), B ₱9,259.25 (925925 ¢)', () => {
     const slots = [
       { batchId: 'batch-a', heads: 3000 },
       { batchId: 'batch-b', heads: 9000 }
@@ -112,7 +109,7 @@ describe('TC-U-03/04/05: Overlap allocation — thesis Table 17 example', () => 
     expect(aShare + bShare).toBe(1234567); // sums exactly
   });
 
-  it('TC-U-04: Other allocation: A ₱250.00 (25000 ¢), B ₱750.01 (75001 ¢)', () => {
+  it('TC-U-03b: Other allocation: A ₱250.00 (25000 ¢), B ₱750.01 (75001 ¢)', () => {
     const slots = [
       { batchId: 'batch-a', heads: 3000 },
       { batchId: 'batch-b', heads: 9000 }
@@ -126,7 +123,7 @@ describe('TC-U-03/04/05: Overlap allocation — thesis Table 17 example', () => 
     expect(aShare + bShare).toBe(100001); // sums exactly
   });
 
-  it('TC-U-05: computeAllocationsForExpense returns 2 rows that sum exactly', () => {
+  it('TC-U-03c: computeAllocationsForExpense returns 2 rows that sum exactly', () => {
     const result = computeAllocationsForExpense(expense, [batchA, batchB], [], []);
     expect(result).not.toBeNull();
     expect(result.rows).toHaveLength(2);
@@ -139,18 +136,18 @@ describe('TC-U-03/04/05: Overlap allocation — thesis Table 17 example', () => 
 });
 
 // ---------------------------------------------------------------------------
-// TC-U-06 — Single open batch takes 100% of the entry
+// TC-U-03 — Single open batch takes 100% of the entry
 // ---------------------------------------------------------------------------
-describe('TC-U-06: Single batch takes 100%', () => {
+describe('TC-U-03: Single batch takes 100%', () => {
   const batch = mkBatch('batch-solo', '2026-03-01', 5000);
 
-  it('TC-U-06a: All feed goes to the single active batch', () => {
+  it('TC-U-03d: All feed goes to the single active batch', () => {
     const slots = [{ batchId: 'batch-solo', heads: 5000 }];
     const split = largestRemainderSplit(999999, slots);
     expect(split[0].shareCentavos).toBe(999999);
   });
 
-  it('TC-U-06b: computeAllocationsForExpense gives 100% to one batch', () => {
+  it('TC-U-03e: computeAllocationsForExpense gives 100% to one batch', () => {
     const expense = { expense_id: 'e1', entry_date: '2026-03-10', feed_centavos: 50000, other_centavos: 10000 };
     const result = computeAllocationsForExpense(expense, [batch], [], []);
     expect(result.rows).toHaveLength(1);
@@ -160,17 +157,17 @@ describe('TC-U-06: Single batch takes 100%', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TC-U-07 / TC-U-08 — Expense on a date with no active batch is rejected
+// TC-U-02 / TC-U-05 — Expense on a date with no active batch is rejected
 // ---------------------------------------------------------------------------
-describe('TC-U-07/08: Expense with no active batch', () => {
-  it('TC-U-07: returns null when no batch is active (batch started after expense date)', () => {
+describe('TC-U-02/05: Expense with no active batch', () => {
+  it('TC-U-05a: returns null when no batch is active (batch started after expense date)', () => {
     const futureBatch = mkBatch('batch-future', '2026-06-01', 5000);
     const expense = { expense_id: 'e2', entry_date: '2026-05-01', feed_centavos: 10000, other_centavos: 0 };
     const result = computeAllocationsForExpense(expense, [futureBatch], [], []);
     expect(result).toBeNull();
   });
 
-  it('TC-U-08: returns null when the only batch has 0 live heads (all sold before expense date)', () => {
+  it('TC-U-05b: returns null when the only batch has 0 live heads (all sold before expense date)', () => {
     const batch = mkBatch('batch-empty', '2026-01-01', 1000);
     const sale = mkSale('batch-empty', '2026-01-05', 1000);
     const expense = { expense_id: 'e3', entry_date: '2026-01-06', feed_centavos: 5000, other_centavos: 0 };
@@ -180,15 +177,15 @@ describe('TC-U-07/08: Expense with no active batch', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TC-U-09 — Backdating a death changes the recomputed allocation
+// Backdating a death changes the recomputed allocation (the rule behind TC-I-05/06)
 // ---------------------------------------------------------------------------
-describe('TC-U-09: Backdated mortality / sale changes allocation', () => {
+describe('Backdated mortality / sale changes allocation', () => {
   const batchA = mkBatch('ba', '2026-02-01', 6000);
   const batchB = mkBatch('bb', '2026-02-01', 6000);
   const date = '2026-02-15';
   const expense = { expense_id: 'ex', entry_date: date, feed_centavos: 120000, other_centavos: 0 };
 
-  it('TC-U-09a: Before backdated death: equal split (50/50)', () => {
+  it('Before backdated death: equal split (50/50)', () => {
     const result = computeAllocationsForExpense(expense, [batchA, batchB], [], []);
     const aRow = result.rows.find((r) => r.batch_id === 'ba');
     const bRow = result.rows.find((r) => r.batch_id === 'bb');
@@ -196,7 +193,7 @@ describe('TC-U-09: Backdated mortality / sale changes allocation', () => {
     expect(bRow.feed_centavos).toBe(60000);
   });
 
-  it('TC-U-09b: After backdating 2000 deaths to batchA: batchA gets 40% (4000/10000)', () => {
+  it('After backdating 2000 deaths to batchA: batchA gets 40% (4000/10000)', () => {
     const mort = mkMort('ba', '2026-02-10', 2000);
     const result = computeAllocationsForExpense(expense, [batchA, batchB], [mort], []);
     const aRow = result.rows.find((r) => r.batch_id === 'ba');
@@ -304,42 +301,42 @@ describe('TC-U-10: Batch H full worked example — all 11 metrics (Table 19)', (
 });
 
 // ---------------------------------------------------------------------------
-// TC-U-11 to TC-U-15 — Zero-denominator N/A guards (FR-16 / AC-12)
+// TC-U-11 — Zero-denominator N/A guards (FR-16 / AC-12)
 // ---------------------------------------------------------------------------
-describe('TC-U-11–15: N/A guards for zero-denominator metrics (FR-16)', () => {
+describe('TC-U-11: N/A guards for zero-denominator metrics (FR-16)', () => {
   const batch = mkBatch('bn', '2026-01-01', 5000);
 
-  it('TC-U-11: margin is N/A when revenue is 0', () => {
+  it('TC-U-11a: margin is N/A when revenue is 0', () => {
     const metrics = calcBatchMetrics(batch, [], [], [], []);
     expect(metrics.margin).toBe('N/A');
   });
 
-  it('TC-U-12: costPerKg is N/A when kgSold is 0', () => {
+  it('TC-U-11b: costPerKg is N/A when kgSold is 0', () => {
     const metrics = calcBatchMetrics(batch, [], [], [], []);
     expect(metrics.costPerKg).toBe('N/A');
   });
 
-  it('TC-U-13: profitPerKg is N/A when kgSold is 0', () => {
+  it('TC-U-11c: profitPerKg is N/A when kgSold is 0', () => {
     const metrics = calcBatchMetrics(batch, [], [], [], []);
     expect(metrics.profitPerKg).toBe('N/A');
   });
 
-  it('TC-U-14: fcr is N/A when kgSold is 0', () => {
+  it('TC-U-11d: fcr is N/A when kgSold is 0', () => {
     const metrics = calcBatchMetrics(batch, [], [], [], []);
     expect(metrics.fcr).toBe('N/A');
   });
 
-  it('TC-U-15: robc is N/A when totalCost is 0', () => {
+  it('TC-U-11e: robc is N/A when totalCost is 0', () => {
     const metrics = calcBatchMetrics(batch, [], [], [], []);
     expect(metrics.robc).toBe('N/A');
   });
 });
 
 // ---------------------------------------------------------------------------
-// TC-U-16 / TC-U-17 — Migration: v1 per-batch cost rows → v3 expense shape
+// Migration: v1 per-batch cost rows → v3 expense shape
 // ---------------------------------------------------------------------------
-describe('TC-U-16/17: Migration conversion correctness', () => {
-  it('TC-U-16: sums medicine+utilities+labor+transport+other into other_centavos', () => {
+describe('Migration conversion correctness', () => {
+  it('sums medicine+utilities+labor+transport+other into other_centavos', () => {
     const oldRow = {
       feed_cost: 500,
       medicine_cost: 100,
@@ -364,7 +361,7 @@ describe('TC-U-16/17: Migration conversion correctness', () => {
     expect(newTotal).toBe(originalTotal); // 1300
   });
 
-  it('TC-U-17: allocation rows for migrated single-batch expense are 100% to that batch', () => {
+  it('allocation rows for migrated single-batch expense are 100% to that batch', () => {
     const batch = mkBatch('mig-batch', '2025-08-05', 10000);
     const expense = {
       expense_id: 'mig-exp',
@@ -376,5 +373,60 @@ describe('TC-U-16/17: Migration conversion correctness', () => {
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].feed_centavos).toBe(50000);
     expect(result.rows[0].other_centavos).toBe(80000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TC-U-01 — Chick cost is counted once, on its own batch, and never shared
+// ---------------------------------------------------------------------------
+describe('TC-U-01: Chick cost counted once', () => {
+  it('appears once in total cost and in no other batch', () => {
+    const a = mkBatch('a', '2026-01-01', 1000, 45000);
+    const b = mkBatch('b', '2026-01-01', 1000, 0);
+    const expense = { expense_id: 'e', entry_date: '2026-01-05', feed_centavos: 200000, other_centavos: 0 };
+    const rows = computeAllocationsForExpense(expense, [a, b], [], []).rows;
+    expect(calcBatchMetrics(a, rows.filter((r) => r.batch_id === 'a'), [], [], []).totalCost).toBe(46000);
+    expect(calcBatchMetrics(b, rows.filter((r) => r.batch_id === 'b'), [], [], []).totalCost).toBe(1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TC-U-04 — Three batches on one day
+// ---------------------------------------------------------------------------
+describe('TC-U-04: Three batches', () => {
+  it('shares ₱100.00 by 1,000 / 2,000 / 3,000 live birds and adds up exactly', () => {
+    const batches = [mkBatch('a', '2026-01-01', 1000), mkBatch('b', '2026-01-02', 2000), mkBatch('c', '2026-01-03', 3000)];
+    const expense = { expense_id: 'e', entry_date: '2026-01-10', feed_centavos: 10000, other_centavos: 1 };
+    const rows = computeAllocationsForExpense(expense, batches, [], []).rows;
+    expect(rows.map((r) => r.feed_centavos)).toEqual([1667, 3333, 5000]);
+    expect(rows.reduce((s, r) => s + r.feed_centavos, 0)).toBe(10000);
+    // One centavo, three equal-looking claims: the largest remainder (batch c, 0.5) gets it
+    expect(rows.map((r) => r.other_centavos)).toEqual([0, 0, 1]);
+    expect(rows.map((r) => r.total_heads)).toEqual([6000, 6000, 6000]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TC-U-09 — Mortality flag at, above and below the alert level (FR-15, AC-11)
+// ---------------------------------------------------------------------------
+describe('TC-U-09: Mortality flag', () => {
+  const batch = { ...mkBatch('f', '2026-01-01', 1000), mortality_threshold_pct: 5 };
+  const flagAt = (deaths) => evalMortalityWarning(batch, [mkMort('f', '2026-01-05', deaths)]).mortalityFlag;
+
+  it('is not shown below the level (4.9%)', () => expect(flagAt(49)).toBe(false));
+  it('is not shown at the level (5.0%)', () => expect(flagAt(50)).toBe(false));
+  it('is shown above the level (5.1%)', () => expect(flagAt(51)).toBe(true));
+  it('is never shown when no level is set', () => {
+    expect(evalMortalityWarning({ ...batch, mortality_threshold_pct: null }, [mkMort('f', '2026-01-05', 900)]).mortalityFlag).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TC-U-13 — Business rules are kept apart from the UI and the database (NFR-08)
+// ---------------------------------------------------------------------------
+describe('TC-U-13: Business logic in isolation', () => {
+  it('allocationEngine.js imports nothing, so its rules run without the UI or Dexie', () => {
+    const source = readFileSync(fileURLToPath(new URL('../src/services/allocationEngine.js', import.meta.url)), 'utf8');
+    expect(source).not.toMatch(/^\s*import\s/m);
   });
 });

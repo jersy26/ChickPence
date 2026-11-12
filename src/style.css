@@ -1662,8 +1662,6 @@ body:has(.flock-app) { background: #dedbd3; }
 .greet-stage { display:inline-block; margin-top:6px; padding:4px 10px; border-radius:999px; background:#fff3c4; color:#5b4706; font-size:11.5px; font-weight:600; }
 .greet-stage.stage-chick { background:#fff8dc; }
 .greet-stage.stage-growing { background:#fdebc0; }
-.greet-mood { margin:6px 0 0; font-size:12px; color:var(--mut); }
-.greet-mood.sad { color:var(--bad); font-weight:600; }
 .greet-mascot { order:1; flex:none; width:84px; height:84px; object-fit:contain; transition:transform .3s ease, filter .3s ease; }
 .greet-mascot.stage-chick { transform:scale(.72); }
 .greet-mascot.stage-growing { transform:scale(.86); }
@@ -1836,7 +1834,6 @@ body:has(.flock-app) { background: #dedbd3; }
 .overview-garden { gap:24px; padding-bottom:46px; }
 .overview-garden .home-hero { padding:9px 4px 4px; }
 .overview-garden .greet-banner h1 { font-size:clamp(24px,2.2vw,35px); line-height:1.2; letter-spacing:-.035em; }
-.overview-garden .greet-mood { color:#635c4d; font-size:12px; margin-top:8px; }
 .overview-garden .flock-top-grid,.overview-detail-grid { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:24px; align-items:stretch; }
 .flock-top-grid.staff-top-grid { grid-template-columns:1fr; }
 .flock-companion { display:flex; flex-direction:column; min-width:0; padding:24px 26px 20px; background:#ddd5bf; border-radius:25px; overflow:hidden; }
@@ -1977,7 +1974,6 @@ body:has(.flock-app) { background: #dedbd3; }
   .overview-garden { gap:18px; }
   .overview-garden .home-hero { align-items:start; flex-direction:row; gap:8px; padding-top:3px; }
   .overview-garden .greet-banner h1 { font-size:25px; max-width:14ch; }
-  .overview-garden .greet-mood { font-size:11px; max-width:24ch; }
   .overview-garden .flock-header-actions .flock-primary { font-size:0; width:40px; height:40px; padding:8px; justify-content:center; border-radius:50%; gap:0; }
   .overview-garden .flock-header-actions .flock-primary span { font-size:20px; }
   .flock-companion { min-height:440px; padding:20px 18px; }

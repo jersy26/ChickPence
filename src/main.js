@@ -10,6 +10,7 @@ import { formatPeso } from './services/calculations.js';
 import { pnlForMonth } from './services/pnlCalendar.js';
 import './style.css';
 import './redesign.css';
+import './readability.css';
 import { AuthService } from './services/auth.js';
 import { Repository } from './services/repository.js';
 import { prepareLocalDataFor } from './db/localData.js';
@@ -390,9 +391,10 @@ async function render() {
 
   } else if (state.view === 'summary') {
     const batchId = state.selectedBatchId;
-    const [batchData, closedBatchesData] = await Promise.all([
+    const [batchData, closedBatchesData, farmRecords] = await Promise.all([
       batchId ? Repository.getBatchFullDetails(batchId) : null,
-      Repository.getClosedBatchesWithData()
+      Repository.getClosedBatchesWithData(),
+      Repository.getFarmRecords()
     ]);
 
     const card = batchData?.batch
@@ -400,7 +402,7 @@ async function render() {
       : null;
     if (!isLatest()) return;
     state.insights = card && { scope: card.scope, facts: card.facts };
-    contentHtml = renderSummary(batchData, card?.insights ?? null);
+    contentHtml = renderSummary(batchData, card?.insights ?? null, { ...farmRecords, today: localToday() });
     appContainer.innerHTML = renderShell(state.view, contentHtml, state.syncStatus, navigate, handleLogout, render);
     attachShellListeners(appContainer, navigate, handleLogout, render, openSync, changeRole);
     attachSummaryListeners(appContainer, navigate, batchData?.batch
@@ -991,6 +993,12 @@ async function launchQuickEntry(home,tab,batchId,editing=null,prefill=null) {
  }});
 }
 function attachOperationActions(home) {
+ // Import file (Open batches, Logbook): the button opens the hidden file input next to it
+ appContainer.querySelectorAll('[data-import-file]').forEach(b=>{
+   const input=b.nextElementSibling;
+   b.addEventListener('click',()=>input?.click());
+   input?.addEventListener('change',()=>{const file=input.files?.[0];input.value='';if(file)importLogFile(file,home.openBatchesData.map(i=>i.batch));});
+ });
  appContainer.querySelectorAll('[data-request-entry]').forEach(b=>b.addEventListener('click',()=>{state.approvalState={...state.approvalState,entryId:b.dataset.requestEntry,requestId:null};navigate('nav:logbook:corrections');}));
  appContainer.querySelectorAll('[data-daily-none]').forEach(b=>b.addEventListener('click',async()=>{
    b.disabled=true;
@@ -1024,6 +1032,7 @@ function attachOperationActions(home) {
    };
    document.addEventListener('click',closeMenu);
  }
+ appContainer.querySelectorAll('[data-batch-summary]').forEach(b=>b.addEventListener('click',()=>navigate('summary',b.dataset.batchSummary)));
  appContainer.querySelectorAll('[data-batch-threshold]').forEach(b=>b.addEventListener('click',()=>{const item=home.openBatchesData.find(i=>i.batch.batch_id===b.dataset.batchThreshold);if(item)openThresholdModal(item.batch,async patch=>{await Repository.updateBatchThresholds(item.batch.batch_id,patch);render();});}));
  appContainer.querySelectorAll('[data-batch-close]').forEach(b=>b.addEventListener('click',()=>{
    const item=home.openBatchesData.find(i=>i.batch.batch_id===b.dataset.batchClose);if(!item)return;

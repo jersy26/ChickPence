@@ -103,7 +103,6 @@ export function renderShell(activeView, contentHtml, syncStatus) {
       <main class="main-content cp-main">
         ${renderTopbar(navKey, r, user, notifications, renderSyncStatus(syncStatus))}
         <nav class="rd-phone-links" aria-label="Staff pages">${navForRole(r).filter(g=>['home','batches','logbook','settings'].includes(g.key)).map(g=>`<button type="button" class="${g.key===navKey.split(':')[0]?'active':''}" data-nav="nav:${g.subs[0].key}">${g.label}</button>`).join('')}</nav>
-        ${user?.isDemo && !sessionStorage.getItem('cp-demo-note-dismissed') ? '<div class="rd-demo-note"><span>Demo mode: changes are saved on this device.</span><button type="button" id="dismiss-demo-note" class="cp-icon-btn" aria-label="Dismiss demo note">×</button></div>':''}
         ${contentHtml}
         ${import.meta.env.VITE_CHICKCOUNT_API_URL ? renderChickCount() : ''}
       </main>
@@ -139,7 +138,6 @@ function bindDocumentListenersOnce() {
 
 export function attachShellListeners(container, onNavigate, onLogout, onReload, onSyncStatus, onRoleChange) {
   attachChickCount(container);
-  container.querySelector('#dismiss-demo-note')?.addEventListener('click',e=>{sessionStorage.setItem('cp-demo-note-dismissed','yes');e.currentTarget.parentElement.remove();});
   container.querySelector('#sidebar-sync-box')?.addEventListener('click', () => onSyncStatus?.());
 
   container.querySelectorAll('[data-nav]').forEach((btn) => {
