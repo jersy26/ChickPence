@@ -5949,3 +5949,205 @@ button.welcome-character .welcome-bubble {
     font-size:14px
   }
 }
+/* Daily entry: header card, step cards and submit bar */
+.rd-daily-top {
+  display:grid;
+  grid-template-columns:minmax(180px,240px) auto minmax(220px,1fr);
+  align-items:center;
+  gap:16px 32px;
+  padding:18px 22px;
+  border-radius:22px;
+  border:1px solid #EFE7D6;
+  background:linear-gradient(135deg,#FFF6D8 0%,#FFFDF6 60%)
+}
+
+.rd-daily-batch {
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-size:12px;
+  color:#6B6457
+}
+
+.rd-daily-batch select {
+  width:100%
+}
+
+.rd-daily-date {
+  display:flex;
+  flex-direction:column;
+  gap:2px
+}
+
+.rd-daily-date span,.rd-daily-progress span {
+  font-size:12px;
+  color:#6B6457
+}
+
+.rd-daily-date b {
+  font-size:18px
+}
+
+.rd-daily-progress>div:first-child {
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px
+}
+
+.rd-daily-progress b {
+  font-size:16px
+}
+
+.rd-daily-progress .todo-progress {
+  height:10px;
+  margin:8px 0 0;
+  background:rgba(43,42,38,.08)
+}
+
+.rd-daily-progress .todo-progress i {
+  background:linear-gradient(90deg,#E3B341,#C99015)
+}
+
+.rd-daily-progress.is-done .todo-progress i {
+  background:linear-gradient(90deg,#8FC48A,#3E7F50)
+}
+
+.rd-task-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  gap:14px
+}
+
+.rd-task {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:18px;
+  border-radius:20px;
+  border:1px solid #EFE7D6;
+  border-top:4px solid #E3B341;
+  background:linear-gradient(170deg,#FFF5D9 0%,#FFFEFA 55%)
+}
+
+.rd-task.is-done {
+  border-top-color:#5E9C55;
+  background:linear-gradient(170deg,#E3F2E0 0%,#FFFEFA 55%)
+}
+
+.rd-task-top {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px
+}
+
+.rd-step {
+  display:grid;
+  place-items:center;
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  font-weight:700;
+  font-size:15px;
+  color:#7A5A12;
+  background:#FBE7A8
+}
+
+.rd-task.is-done .rd-step {
+  color:#fff;
+  background:linear-gradient(135deg,#7FBF73,#3E7F50)
+}
+
+.rd-task h2 {
+  margin:4px 0 0;
+  font-size:20px
+}
+
+.rd-task-hint {
+  margin:0;
+  font-size:13px;
+  line-height:1.45;
+  color:#6B6457
+}
+
+.rd-task-actions {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-top:auto;
+  padding-top:8px
+}
+
+.rd-task-actions .btn-action {
+  width:100%;
+  justify-content:center
+}
+
+.rd-task.is-done .rd-task-actions .btn-action.primary {
+  background:#fff;
+  border-color:#CFE3C9;
+  color:#2F6B3F
+}
+
+.rd-daily-extra .btn-action {
+  width:100%
+}
+
+.rd-submit-bar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px 24px;
+  padding:16px 22px;
+  border-radius:20px;
+  border:1px solid #EFE7D6;
+  background:#FFFEFA
+}
+
+.rd-submit-bar b {
+  font-size:15px
+}
+
+.rd-submit-bar p {
+  margin:4px 0 0;
+  font-size:12px
+}
+
+.rd-submit-bar .btn-action {
+  flex-shrink:0;
+  min-width:200px;
+  justify-content:center
+}
+
+.rd-submit-bar.is-ready {
+  border-color:#BCDDC1;
+  background:linear-gradient(135deg,#E3F2E0 0%,#FFFEFA 70%)
+}
+
+.rd-submit-bar.is-submitted {
+  border-color:#BCDDC1;
+  background:#EEF7EE
+}
+
+.rd-submit-bar.is-submitted b {
+  color:#2F6B3F
+}
+
+@media (max-width:760px) {
+  .rd-daily-top {
+    grid-template-columns:1fr auto;
+    padding:16px
+  }
+  .rd-daily-progress {
+    grid-column:1/-1
+  }
+  .rd-submit-bar {
+    flex-direction:column;
+    align-items:stretch
+  }
+  .rd-submit-bar .btn-action {
+    min-width:0;
+    width:100%
+  }
+}
