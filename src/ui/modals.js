@@ -62,6 +62,26 @@ export function openThresholdModal(batch, onSave) {
   });
 }
 
+export function openSubmitDayModal(batchName, onConfirm) {
+  openModal(`
+    <div class="flex-row">
+      <h2>Submit the day?</h2>
+      <button class="btn-icon" id="btn-close-modal" aria-label="Close">✕</button>
+    </div>
+    <p class="text-mut">All of today's tasks for <b>${escapeHtml(batchName)}</b> are done. Submitting locks the daily-entry screen on this device for today. Saved farm records stay unchanged.</p>
+    <div class="flex-row" style="margin-top: 12px;">
+      <button class="btn-action" id="btn-cancel-submit-day">Not yet</button>
+      <button class="btn-action primary" id="btn-confirm-submit-day">Submit the day</button>
+    </div>
+  `);
+  document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
+  document.getElementById('btn-cancel-submit-day')?.addEventListener('click', closeModal);
+  document.getElementById('btn-confirm-submit-day')?.addEventListener('click', () => {
+    closeModal();
+    onConfirm();
+  });
+}
+
 /** Confirm closing a batch (renamed from "Complete"). */
 export function openCloseBatchModal(batch, salesCount, onConfirm) {
   const hasSales = salesCount > 0;

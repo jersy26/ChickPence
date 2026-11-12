@@ -4,7 +4,7 @@ import { renderOpenBatches, renderCompare, renderSales, renderCosts, renderDaily
 import { attachRedesignKit, empty, table, pill, header, barChart } from './ui/redesignKit.js';
 import { openQuickEntry } from './ui/quickEntry.js';
 import { readPreview, writePreview, assignedItems } from './ui/previewState.js';
-import { openCloseBatchModal, openThresholdModal } from './ui/modals.js';
+import { openCloseBatchModal, openThresholdModal, openSubmitDayModal } from './ui/modals.js';
 import { escapeHtml } from './ui/html.js';
 import { formatPeso } from './services/calculations.js';
 import { pnlForMonth } from './services/pnlCalendar.js';
@@ -305,10 +305,10 @@ async function render() {
     drawPage(renderDailyEntry(home.openBatchesData,home.tasks,{batchId:state.selectedBatchId,marks:readPreview(AuthService.getUser().id,'day-submissions'),scope:state.role==='staff'?previewPerson()?.id:AuthService.getUser().id,role:state.role,permissions:previewPerson()?.permissions||[]}));
     appContainer.querySelector('#rd-daily-batch')?.addEventListener('change',e=>{state.selectedBatchId=e.target.value;render();});
     appContainer.querySelector('[data-submit-day]')?.addEventListener('click',e=>{
-      const key=e.currentTarget.dataset.submitDay;
-      if(confirm('Submit this day? This locks the daily-entry screen on this device. Saved farm records are unchanged.')) {
+      const key=e.currentTarget.dataset.submitDay,batchName=appContainer.querySelector('#rd-daily-batch')?.selectedOptions[0]?.text||'this batch';
+      openSubmitDayModal(batchName,()=>{
         writePreview(AuthService.getUser().id,'day-submissions',{...readPreview(AuthService.getUser().id,'day-submissions'),[key]:true});render();
-      }
+      });
     });
 
   } else if (state.view === 'concerns') {
