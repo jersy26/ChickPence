@@ -5362,3 +5362,212 @@ button.welcome-character .welcome-bubble {
     margin:0
   }
 }
+/* Sales: summary tiles and colour-coded sale rows */
+.rd-sales-head {
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px
+}
+
+.rd-sales-head .rd-section-title {
+  margin:0
+}
+
+.rd-sales-summary {
+  display:grid;
+  grid-template-columns:1.4fr 1fr 1fr;
+  gap:12px;
+  margin:0 0 4px
+}
+
+.rd-sum-tile {
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:4px;
+  min-width:0;
+  padding:14px 18px;
+  border-radius:18px;
+  border:1px solid #EFE7D6
+}
+
+.rd-sum-tile span {
+  font-size:12px;
+  color:#6B6457
+}
+
+.rd-sum-tile strong {
+  font-size:clamp(20px,2.4vw,26px);
+  line-height:1.15;
+  font-weight:700;
+  overflow-wrap:anywhere
+}
+
+.rd-sum-tile small {
+  font-size:12px;
+  color:#6B6457
+}
+
+.rd-sum-tile.total {
+  background:linear-gradient(135deg,#FBE7A8 0%,#FFF7DD 100%);
+  border-color:#EED79A
+}
+
+.rd-sum-tile.good {
+  background:linear-gradient(135deg,#D3EBD6 0%,#F1F9F1 100%);
+  border-color:#BCDDC1
+}
+
+.rd-sum-tile.good strong,.rd-sum-tile.good small {
+  color:#2F6B3F
+}
+
+.rd-sum-tile.bad {
+  background:linear-gradient(135deg,#F9D3C7 0%,#FDEDE7 100%);
+  border-color:#EFBCAB
+}
+
+.rd-sum-tile.bad strong,.rd-sum-tile.bad small {
+  color:#9A3A26
+}
+
+.rd-sales-list {
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:8px
+}
+
+.rd-sale {
+  --tone:#B9AF9A;
+  --tint:#F7F2E6;
+  display:grid;
+  grid-template-columns:64px minmax(0,1fr) auto;
+  align-items:center;
+  gap:16px;
+  padding:12px 18px 12px 14px;
+  border-radius:16px;
+  border:1px solid #EFE7D6;
+  border-left:5px solid var(--tone);
+  background:linear-gradient(90deg,var(--tint) 0%,#FFFEFA 55%)
+}
+
+.rd-sale.good {
+  --tone:#4E9A61;
+  --tint:#E8F4E9
+}
+
+.rd-sale.bad {
+  --tone:#C6432B;
+  --tint:#FCE7E1
+}
+
+.rd-sale-date {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  line-height:1.1;
+  text-align:center
+}
+
+.rd-sale-date b {
+  font-size:24px
+}
+
+.rd-sale-date span {
+  font-size:11px;
+  color:#6B6457
+}
+
+.rd-sale-main {
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0
+}
+
+.rd-sale-title {
+  display:flex;
+  align-items:baseline;
+  flex-wrap:wrap;
+  gap:4px 10px
+}
+
+.rd-sale-title b {
+  font-size:15px
+}
+
+.rd-sale-title span {
+  font-size:12px
+}
+
+.rd-sale-facts {
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px 14px;
+  font-size:13px;
+  color:#4E483D
+}
+
+.rd-sale-price {
+  font-weight:700
+}
+
+.rd-sale.good .rd-sale-price {
+  color:#2F6B3F
+}
+
+.rd-sale.bad .rd-sale-price {
+  color:#9A3A26
+}
+
+.rd-sale-be {
+  color:#8A8270
+}
+
+.rd-sale-total {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:6px;
+  text-align:right
+}
+
+.rd-sale-total strong {
+  font-size:18px;
+  white-space:nowrap
+}
+
+.rd-sale-total .rd-pill {
+  white-space:nowrap
+}
+
+@media (max-width:640px) {
+  .rd-sales-summary {
+    grid-template-columns:1fr 1fr
+  }
+  .rd-sum-tile.total {
+    grid-column:1/-1
+  }
+  .rd-sale {
+    grid-template-columns:48px minmax(0,1fr);
+    gap:6px 12px;
+    padding:12px
+  }
+  .rd-sale-date b {
+    font-size:20px
+  }
+  .rd-sale-total {
+    grid-column:2;
+    flex-direction:row;
+    align-items:center;
+    justify-content:space-between;
+    text-align:left
+  }
+  .rd-sale-total strong {
+    font-size:16px
+  }
+}
