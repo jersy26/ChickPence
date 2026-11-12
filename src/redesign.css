@@ -5626,12 +5626,12 @@ button.welcome-character .welcome-bubble {
   border-color:#BCDDC1
 }
 
-.rd-cost-card.trend.up .rd-trend {
+.rd-cost-card.trend.up .rd-spend-trend {
   color:#9A3A26;
   font-weight:700
 }
 
-.rd-cost-card.trend.down .rd-trend {
+.rd-cost-card.trend.down .rd-spend-trend {
   color:#2F6B3F;
   font-weight:700
 }
@@ -6484,5 +6484,623 @@ button.welcome-character .welcome-bubble {
     height:30px;
     min-height:30px;
     border-radius:8px
+  }
+}
+/* Reports: header actions, colour-coded report types and one filter card */
+.rd-reports-head {
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:12px 24px
+}
+
+.rd-reports-head h1 {
+  margin:0
+}
+
+.rd-reports-head p {
+  margin:4px 0 0
+}
+
+.rd-reports-actions {
+  display:flex;
+  gap:10px
+}
+
+.rd-reports-actions .btn-action {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding-inline:18px
+}
+
+.rd-reports-actions .btn-action:not(.primary) {
+  background:#fff;
+  border-color:#E3D8BE
+}
+
+.rd-report-tabs {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:10px
+}
+
+.rd-report-tab {
+  --c:#C99015;
+  --tint:#FFF6DA;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  border-radius:18px;
+  border:1.5px solid #EFE7D6;
+  background:#FFFEFA;
+  color:#2B2A26;
+  text-align:left;
+  cursor:pointer;
+  transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease
+}
+
+.rd-report-tab.t-flock {
+  --c:#2F6F99;
+  --tint:#E3EFF7
+}
+
+.rd-report-tab.t-health {
+  --c:#C6543B;
+  --tint:#FBE7E1
+}
+
+.rd-report-tab.t-sales {
+  --c:#3E7F50;
+  --tint:#E3F2E0
+}
+
+.rd-report-tab.t-breakdown {
+  --c:#7A6BB8;
+  --tint:#EEEAF8
+}
+
+.rd-report-tab:hover {
+  transform:translateY(-1px);
+  border-color:var(--c)
+}
+
+.rd-report-icon {
+  display:grid;
+  place-items:center;
+  flex-shrink:0;
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  color:var(--c);
+  background:var(--tint)
+}
+
+.rd-report-tab b {
+  display:block;
+  font-size:14px
+}
+
+.rd-report-tab small {
+  display:block;
+  font-size:11.5px;
+  color:#6B6457
+}
+
+.rd-report-tab.active {
+  border-color:var(--c);
+  background:linear-gradient(135deg,var(--tint) 0%,#FFFEFA 90%);
+  box-shadow:0 8px 20px -14px var(--c)
+}
+
+.rd-report-tab.active .rd-report-icon {
+  color:#fff;
+  background:var(--c)
+}
+
+.rd-report-controls {
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  padding:16px 18px;
+  border-radius:20px;
+  border:1px solid #EFE7D6;
+  background:#FFFEFA
+}
+
+.rd-report-period {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px 12px
+}
+
+.rd-report-period>span {
+  font-size:12px;
+  font-weight:600;
+  color:#6B6457
+}
+
+.rd-report-period .rd-date-presets {
+  margin:0
+}
+
+.rd-report-period .rd-date-presets .btn-action {
+  min-height:36px;
+  padding:6px 14px;
+  font-size:13px
+}
+
+.rd-report-controls .rd-hover-select>span {
+  font-size:12px;
+  color:#6B6457
+}
+
+.rd-report-controls .farm-filterbar {
+  margin:0;
+  padding:0;
+  border:0;
+  background:none;
+  box-shadow:none
+}
+
+@media (max-width:640px) {
+  .rd-reports-actions {
+    width:100%
+  }
+  .rd-reports-actions .btn-action {
+    flex:1;
+    justify-content:center
+  }
+  .rd-report-tabs {
+    grid-template-columns:1fr 1fr
+  }
+  .rd-report-tab {
+    padding:10px;
+    gap:8px
+  }
+  .rd-report-icon {
+    width:34px;
+    height:34px
+  }
+  .rd-report-tab small {
+    display:none
+  }
+}
+/* Reports: weekly bar charts for feed and deaths */
+.rd-trend-card {
+  --c:#5E9C55;
+  --tint:#EEF6EA;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:16px 18px;
+  border-radius:18px;
+  border:1px solid #EFE7D6;
+  background:linear-gradient(170deg,var(--tint) 0%,#FFFEFA 45%)
+}
+
+.rd-trend-card.deaths {
+  --c:#C6543B;
+  --tint:#FCEDE8
+}
+
+.rd-trend-card h3 {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:0;
+  font-size:16px
+}
+
+.rd-trend-card h3::before {
+  content:'';
+  width:10px;
+  height:10px;
+  border-radius:3px;
+  background:var(--c)
+}
+
+.rd-trend-stats {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px
+}
+
+.rd-trend-stats div {
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0
+}
+
+.rd-trend-stats span {
+  font-size:11px;
+  color:#6B6457
+}
+
+.rd-trend-stats b {
+  font-size:16px;
+  color:var(--c);
+  white-space:nowrap
+}
+
+.rd-trend-card .rd-trend {
+  margin-top:0
+}
+
+.rd-trend-card .rd-trend rect {
+  transition:opacity .15s ease
+}
+
+.rd-trend-card .rd-trend rect:hover {
+  opacity:.75
+}
+
+.rd-trend-note {
+  margin:0;
+  font-size:11px;
+  color:#8A8270
+}
+
+@media (max-width:640px) {
+  .rd-trend-stats b {
+    font-size:14px
+  }
+}
+/* Reports: recorded P&L tiles and coloured month amounts */
+.rd-pnl-tiles {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin:4px 0 18px
+}
+
+.rd-pnl-tile {
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+  padding:16px 18px;
+  border-radius:18px;
+  border:1px solid #EFE7D6
+}
+
+.rd-pnl-tile span {
+  font-size:12px;
+  font-weight:600;
+  color:#6B6457
+}
+
+.rd-pnl-tile strong {
+  font-size:clamp(20px,2.4vw,28px);
+  line-height:1.15;
+  white-space:nowrap
+}
+
+.rd-pnl-tile small {
+  font-size:12px;
+  color:#6B6457
+}
+
+.rd-pnl-tile.loss {
+  background:linear-gradient(135deg,#F9D6CA 0%,#FDEFEA 100%);
+  border-color:#EFBCAB
+}
+
+.rd-pnl-tile.loss strong {
+  color:#9A3A26
+}
+
+.rd-pnl-tile.gain {
+  background:linear-gradient(135deg,#D3EBD6 0%,#F1F9F1 100%);
+  border-color:#BCDDC1
+}
+
+.rd-pnl-tile.gain strong {
+  color:#2F6B3F
+}
+
+.rd-pnl-tile.change {
+  background:#FFFEFA
+}
+
+.rd-pnl-tile.change.loss small {
+  color:#9A3A26;
+  font-weight:600
+}
+
+.rd-pnl-tile.change.gain small {
+  color:#2F6B3F;
+  font-weight:600
+}
+
+.rd-pnl-panel .rd-bar-row b {
+  font-size:14px;
+  color:#2F6B3F
+}
+
+.rd-pnl-panel .rd-bar-row:has(i.negative) b {
+  color:#9A3A26
+}
+
+@media (max-width:640px) {
+  .rd-pnl-tiles {
+    grid-template-columns:1fr
+  }
+}
+/* Profit calendar: header controls, month summary and shaded day cells */
+.pnl-calendar.v2 {
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  padding:22px
+}
+
+.pnl-calendar.v2 .pnl-calendar-head {
+  align-items:flex-start;
+  flex-wrap:wrap;
+  gap:10px 16px
+}
+
+.pnl-calendar.v2 .pnl-calendar-head h2 {
+  margin:0;
+  font-size:20px;
+  font-weight:700;
+  color:#2B2A26
+}
+
+.pnl-calendar.v2 .pnl-sub {
+  display:block;
+  margin-top:2px;
+  font-size:12px;
+  color:#6B6457
+}
+
+.pnl-head-controls {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px
+}
+
+.pnl-calendar.v2 .pnl-month-nav {
+  gap:4px;
+  padding:4px;
+  border-radius:14px;
+  background:#F4EEE1;
+  font-size:13px;
+  font-weight:600;
+  color:#2B2A26
+}
+
+.pnl-calendar.v2 .pnl-month-nav span {
+  min-width:120px
+}
+
+.pnl-calendar.v2 .pnl-month-nav button {
+  width:32px;
+  height:32px;
+  border-radius:10px;
+  background:#FFFEFA;
+  color:#2B2A26;
+  font-size:18px
+}
+
+.pnl-calendar.v2 .pnl-jump {
+  min-height:40px;
+  padding:6px 14px;
+  border-radius:12px;
+  border:1px solid #E3D8BE;
+  background:#FFFEFA;
+  color:#2B2A26;
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer
+}
+
+.pnl-calendar.v2 .pnl-jump:hover {
+  background:#FCF1C7
+}
+
+.pnl-summary {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:12px 20px;
+  padding:16px 20px;
+  border-radius:18px;
+  border:1px solid #EFE7D6;
+  background:#FFFEFA
+}
+
+.pnl-summary.pnl-negative {
+  background:linear-gradient(135deg,#F9D6CA 0%,#FFF7F3 70%);
+  border-color:#EFBCAB
+}
+
+.pnl-summary.pnl-positive {
+  background:linear-gradient(135deg,#D3EBD6 0%,#F6FBF4 70%);
+  border-color:#BCDDC1
+}
+
+.pnl-calendar.v2 .pnl-month-total {
+  margin:0;
+  font-size:clamp(26px,3.4vw,36px);
+  font-weight:700
+}
+
+.pnl-calendar.v2 .pnl-month-total.pnl-negative {
+  color:#9A3A26
+}
+
+.pnl-calendar.v2 .pnl-month-total.pnl-positive {
+  color:#2F6B3F
+}
+
+.pnl-calendar.v2 .pnl-month-total>span {
+  font-size:12px;
+  font-weight:500;
+  color:#6B6457
+}
+
+.pnl-mini {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px
+}
+
+.pnl-mini>span {
+  display:flex;
+  flex-direction:column;
+  min-width:90px;
+  padding:8px 12px;
+  border-radius:12px;
+  background:rgba(255,255,255,.75)
+}
+
+.pnl-mini small {
+  font-size:11px;
+  color:#6B6457
+}
+
+.pnl-mini b {
+  font-size:15px;
+  color:#2B2A26
+}
+
+.pnl-mini .gain b {
+  color:#2F6B3F
+}
+
+.pnl-mini .loss b {
+  color:#9A3A26
+}
+
+.pnl-calendar.v2 .pnl-weekdays {
+  margin:0;
+  font-size:11px;
+  font-weight:600;
+  color:#8A8270
+}
+
+.pnl-calendar.v2 .pnl-days {
+  gap:6px
+}
+
+.pnl-calendar.v2 .pnl-day {
+  align-items:flex-start;
+  justify-content:space-between;
+  min-height:60px;
+  padding:7px 9px;
+  border:1px solid #F0E9DA;
+  border-radius:12px;
+  background:#FFFEFA;
+  color:#2B2A26;
+  text-align:left;
+  font-size:12px
+}
+
+.pnl-calendar.v2 .pnl-day>span {
+  font-size:12px;
+  font-weight:600;
+  opacity:.75
+}
+
+.pnl-calendar.v2 .pnl-day small {
+  align-self:stretch;
+  font-size:13px;
+  font-weight:700;
+  line-height:1.2
+}
+
+.pnl-calendar.v2 .pnl-day.pnl-negative {
+  border-color:transparent;
+  background:color-mix(in srgb,#E07A5F calc(var(--a) * 70%),#FFF6F2);
+  color:#6E2414
+}
+
+.pnl-calendar.v2 .pnl-day.pnl-positive {
+  border-color:transparent;
+  background:color-mix(in srgb,#6FB06A calc(var(--a) * 70%),#F3FAF0);
+  color:#1F4D2C
+}
+
+.pnl-calendar.v2 .pnl-day.pnl-empty-day {
+  color:#A79F8D
+}
+
+.pnl-calendar.v2 .pnl-day.pnl-today {
+  box-shadow:0 0 0 2px #C99015
+}
+
+.pnl-calendar.v2 .pnl-day:hover,.pnl-calendar.v2 .pnl-day:focus-visible {
+  transform:translateY(-2px);
+  box-shadow:0 8px 16px -10px rgba(84,64,32,.6)
+}
+
+.pnl-calendar.v2 .pnl-legend {
+  align-items:center;
+  margin:0;
+  font-size:12px;
+  color:#6B6457
+}
+
+.pnl-calendar.v2 .pnl-dot {
+  width:10px;
+  height:10px;
+  border-radius:3px
+}
+
+.pnl-calendar.v2 .pnl-dot.positive {
+  background:#6FB06A
+}
+
+.pnl-calendar.v2 .pnl-dot.negative {
+  background:#E07A5F
+}
+
+.pnl-calendar.v2 .pnl-dot.neutral {
+  background:#E6DFCF
+}
+
+.pnl-legend-note {
+  margin-left:auto;
+  color:#8A8270
+}
+
+@media (max-width:640px) {
+  .pnl-calendar.v2 {
+    padding:14px
+  }
+  .pnl-calendar.v2 .pnl-days {
+    gap:3px
+  }
+  .pnl-calendar.v2 .pnl-day {
+    min-height:46px;
+    padding:4px;
+    align-items:center;
+    text-align:center
+  }
+  .pnl-calendar.v2 .pnl-day small {
+    display:none
+  }
+  .pnl-calendar.v2 .pnl-day>span {
+    opacity:1
+  }
+  .pnl-mini>span {
+    min-width:0;
+    flex:1 1 40%
+  }
+  .pnl-mini b {
+    font-size:13px;
+    white-space:nowrap
+  }
+  .pnl-legend-note {
+    margin-left:0;
+    flex-basis:100%
   }
 }

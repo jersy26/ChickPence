@@ -8,19 +8,21 @@ const dateLabel = date => new Date(date+'T00:00:00Z').toLocaleDateString('en-US'
 const tone = net => net > 0 ? 'pnl-positive' : net < 0 ? 'pnl-negative' : 'pnl-neutral';
 
 export function renderPnlCalendar(ledger, month = localToday().slice(0,7)) {
-  const totals = pnlForMonth(ledger, month);
-  return `<div class="pnl-calendar" data-month="${month}">
-    <div class="pnl-calendar-head"><h2>Profit calendar</h2><div class="pnl-month-nav"><button type="button" data-month-step="-1" aria-label="Previous month">‹</button><span aria-live="polite">${monthLabel(month)}</span><button type="button" data-month-step="1" aria-label="Next month">›</button></div></div>
-    <div class="pnl-month-total ${tone(totals.net)}">${money(totals.net)}<span>Recorded P&amp;L this month</span></div>
-    <div class="pnl-weekdays" aria-hidden="true">${['M','T','W','T','F','S','S'].map(d=>`<span>${d}</span>`).join('')}</div>
+  const totals = pnlForMonth(ledger, month), dates = monthDates(month);
+  const monthDays = dates.filter(Boolean).map(d => ledger.days.get(d)).filter(Boolean);
+  const maxAbs = Math.max(...monthDays.map(d => Math.abs(d.net)), 1);
+  const gains = monthDays.filter(d => d.net > 0).length, losses = monthDays.filter(d => d.net < 0).length;
+  return `<div class="pnl-calendar v2" data-month="${month}">
+    <div class="pnl-calendar-head"><div><h2>Profit calendar</h2><span class="pnl-sub">Recorded profit and loss, day by day</span></div><div class="pnl-head-controls"><div class="pnl-month-nav"><button type="button" data-month-step="-1" aria-label="Previous month">‹</button><span aria-live="polite">${monthLabel(month)}</span><button type="button" data-month-step="1" aria-label="Next month">›</button></div><button type="button" class="pnl-jump" data-pnl-today>Today</button><button type="button" class="pnl-jump" data-pnl-latest>Latest</button></div></div>
+    <div class="pnl-summary ${tone(totals.net)}"><div class="pnl-month-total ${tone(totals.net)}">${money(totals.net)}<span>${totals.net < 0 ? 'Loss' : totals.net > 0 ? 'Profit' : 'Net'} in ${monthLabel(month)}</span></div><div class="pnl-mini"><span><small>Sales</small><b>${money(totals.revenue)}</b></span><span><small>Costs</small><b>${money(totals.cost)}</b></span><span class="gain"><small>Profit days</small><b>${gains}</b></span><span class="loss"><small>Loss days</small><b>${losses}</b></span></div></div>
+    <div class="pnl-weekdays" aria-hidden="true">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span>${d}</span>`).join('')}</div>
     <div class="pnl-days" aria-label="${monthLabel(month)} daily profit and loss">
-    ${monthDates(month).map(date => {
+    ${dates.map(date => {
       if (!date) return '<span class="pnl-day-blank"></span>';
-      const day=ledger.days.get(date);
-      return `<button type="button" class="pnl-day ${day ? tone(day.net) : ''} ${date === localToday() ? 'pnl-today' : ''}" data-pnl-date="${date}" aria-label="${esc(dateLabel(date))}: ${day ? money(day.net)+' recorded P&L' : 'No financial entries'}. View day details." ${date === localToday() ? 'aria-current="date"' : ''}><span>${Number(date.slice(-2))}</span><small>${day ? compact(day.net) : '·'}</small></button>`;
+      const day=ledger.days.get(date), a=day ? (0.25 + 0.75 * Math.abs(day.net) / maxAbs).toFixed(2) : 0;
+      return `<button type="button" class="pnl-day ${day ? tone(day.net) : 'pnl-empty-day'} ${date === localToday() ? 'pnl-today' : ''}" style="--a:${a}" data-pnl-date="${date}" aria-label="${esc(dateLabel(date))}: ${day ? money(day.net)+' recorded P&L' : 'No financial entries'}. View day details." ${date === localToday() ? 'aria-current="date"' : ''}><span>${Number(date.slice(-2))}</span>${day ? `<small>${compact(day.net)}</small>` : ''}</button>`;
     }).join('')}</div>
-    <div class="pnl-legend"><span><i class="pnl-dot positive"></i>Profit</span><span><i class="pnl-dot negative"></i>Loss</span><span><i class="pnl-dot neutral"></i>No entries</span></div>
-    <div class="pnl-calendar-foot"><span>Hover to preview · click for details</span><button type="button" data-pnl-today>Today</button><button type="button" data-pnl-latest>Latest activity</button></div>
+    <div class="pnl-legend"><span><i class="pnl-dot positive"></i>Profit</span><span><i class="pnl-dot negative"></i>Loss</span><span><i class="pnl-dot neutral"></i>No entries</span><span class="pnl-legend-note">Darker = bigger amount · tap a day for details</span></div>
     ${!totals.days ? '<p class="pnl-no-entries">No financial entries this month.</p>' : ''}
   </div>`;
 }
