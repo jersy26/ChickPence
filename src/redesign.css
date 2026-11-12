@@ -4049,6 +4049,58 @@ button.welcome-character .welcome-bubble {
   line-height:1.4
 }
 
+.home-flock-hero:has(.home-ring) {
+  justify-content:space-around;
+  margin:12px 0 2px
+}
+
+.home-ring {
+  --p:0;
+  --ring:#4E9A61;
+  position:relative;
+  width:104px;
+  height:104px;
+  border-radius:50%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  flex-shrink:0;
+  background:rgba(255,255,255,.55)
+}
+
+.home-ring::before {
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius:50%;
+  background:conic-gradient(var(--ring) calc(var(--p) * 1%),rgba(43,42,38,.1) 0);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));
+  mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px))
+}
+
+.home-ring.near-target {
+  --ring:#C99015
+}
+
+.home-ring.past-target {
+  --ring:#C6543B
+}
+
+.home-ring.live {
+  --ring:#3F7FA6
+}
+
+.home-ring .home-flock-big-num {
+  font-size:24px
+}
+
+.home-ring .home-flock-big-label {
+  font-size:10px;
+  line-height:1.2
+}
+
 .home-flock-big-num.text-bad {
   color:#9A3A26
 }
