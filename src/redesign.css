@@ -3999,75 +3999,61 @@ button.welcome-character .welcome-bubble {
   background:#C99015
 }
 
+.home-flock-card {
+  background:linear-gradient(150deg,#F3EEDF 0%,#FBF8F0 60%,#FFFDF8 100%)
+}
+
 .home-flock-card.card-overdue {
-  background:#FEF0EE
+  background:linear-gradient(150deg,#FAD6CB 0%,#FDEAE4 55%,#FFF7F4 100%)
 }
 
 .home-flock-card.card-near-target {
-  background:#FEF9EC
+  background:linear-gradient(150deg,#F9E7B5 0%,#FDF4DC 55%,#FFFBF1 100%)
 }
 
-.home-flock-card.card-overdue .home-flock-money {
-  border-top-color:#EDBBAF
+.home-flock-card>header {
+  align-items:center
 }
 
-.home-flock-card.card-overdue .home-flock-hero-divider {
-  background:#EDBBAF
+.home-flock-card header .home-batch-link {
+  min-height:28px
+}
+
+.home-flock-card header .rd-pill {
+  max-width:none;
+  white-space:nowrap
+}
+
+.home-flock-started {
+  display:block;
+  font-size:11px;
+  color:#6B6457
 }
 
 .home-flock-hero {
-  display:flex;
-  align-items:center;
-  gap:16px;
-  margin:10px 0 0
-}
-
-.home-flock-hero-stat {
-  display:flex;
-  flex-direction:column;
-  gap:2px;
-  flex:1
-}
-
-.home-flock-hero-divider {
-  width:1px;
-  height:36px;
-  background:#E9E0CD;
-  flex-shrink:0
-}
-
-.home-flock-big-num {
-  font-size:26px;
-  font-weight:700;
-  line-height:1.1;
-  color:#2B2A26
-}
-
-.home-flock-big-label {
-  font-size:10px;
-  color:#6B6457;
-  line-height:1.4
-}
-
-.home-flock-hero:has(.home-ring) {
-  justify-content:space-around;
-  margin:12px 0 2px
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  justify-items:center;
+  gap:10px;
+  margin:14px 0 4px
 }
 
 .home-ring {
   --p:0;
+  --t:100;
   --ring:#4E9A61;
+  --ring-a:#A8D5B2;
+  --over:#C6432B;
   position:relative;
-  width:104px;
-  height:104px;
+  width:min(100%,112px);
+  aspect-ratio:1;
   border-radius:50%;
   display:flex;
   flex-direction:column;
   align-items:center;
   justify-content:center;
   text-align:center;
-  flex-shrink:0;
-  background:rgba(255,255,255,.55)
+  background:radial-gradient(circle at 35% 30%,#fff 0%,rgba(255,255,255,.4) 75%)
 }
 
 .home-ring::before {
@@ -4075,38 +4061,82 @@ button.welcome-character .welcome-bubble {
   position:absolute;
   inset:0;
   border-radius:50%;
-  background:conic-gradient(var(--ring) calc(var(--p) * 1%),rgba(43,42,38,.1) 0);
-  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));
-  mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px))
+  background:conic-gradient(var(--ring-a) 0%,var(--ring) calc(min(var(--p),var(--t)) * 1%),#F0937C calc(min(var(--p),var(--t)) * 1%),var(--over) calc(var(--p) * 1%),rgba(43,42,38,.09) calc(var(--p) * 1%));
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 8px),#000 calc(100% - 7px));
+  mask:radial-gradient(farthest-side,transparent calc(100% - 8px),#000 calc(100% - 7px))
+}
+
+.home-ring::after {
+  content:'';
+  position:absolute;
+  inset:-5px;
+  border-radius:50%;
+  pointer-events:none;
+  transform:rotate(calc(var(--t) * 3.6deg));
+  background:linear-gradient(#2B2A26,#2B2A26) top center/3px 18px no-repeat
+}
+
+.home-ring.no-limit::after {
+  display:none
 }
 
 .home-ring.near-target {
-  --ring:#C99015
+  --ring:#C99015;
+  --ring-a:#F2D48A
 }
 
 .home-ring.past-target {
-  --ring:#C6543B
+  --ring:#C6432B;
+  --ring-a:#F2A48F
 }
 
 .home-ring.live {
-  --ring:#3F7FA6
+  --ring:#2F6F99;
+  --ring-a:#9CCBE6
 }
 
-.home-ring .home-flock-big-num {
-  font-size:24px
-}
-
-.home-ring .home-flock-big-label {
-  font-size:10px;
-  line-height:1.2
+.home-flock-big-num {
+  position:relative;
+  font-size:24px;
+  font-weight:700;
+  line-height:1.1;
+  color:#2B2A26
 }
 
 .home-flock-big-num.text-bad {
   color:#9A3A26
 }
 
-.home-flock-hero+.home-flock-meta {
-  margin:8px 0 4px
+.home-flock-big-label {
+  position:relative;
+  max-width:80%;
+  font-size:10px;
+  line-height:1.2;
+  color:#6B6457
+}
+
+.home-flock-card .home-flock-money {
+  grid-template-columns:1.4fr 1fr 1fr;
+  align-items:end;
+  margin-top:12px
+}
+
+.home-flock-card.card-overdue .home-flock-money {
+  border-top-color:#EDBBAF
+}
+
+.home-flock-money .net dd {
+  font-size:clamp(20px,6vw,26px);
+  line-height:1.1;
+  white-space:nowrap
+}
+
+.home-ring .home-flock-big-num {
+  font-size:clamp(18px,5.2vw,24px)
+}
+
+.home-flock-money dd.text-good {
+  color:#3E7F50
 }
 
 .dense-overview .pnl-calendar-host {
