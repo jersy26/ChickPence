@@ -1,0 +1,7 @@
+# Local settings point at this PC (local Supabase, Ollama); keep them out of the hosted build
+.env
+.env.*
+!.env.example
+node_modules
+dist
+.claude
